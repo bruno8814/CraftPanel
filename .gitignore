@@ -43,3 +43,10 @@ Thumbs.db
 .vite/
 frontend/.vite/
 *.tsbuildinfo
+
+# 8. Proyecto Independiente Flea Market (Mod y Portal de Jugadores)
+mod/
+fleamarket/
+.gradle/
+*.class
+*.jar
