@@ -1,0 +1,53 @@
+# ============================================================
+# craftpanel.service — Unidad Systemd para Debian / Proxmox VE
+# ============================================================
+# Instalación:
+#   1. Copiar este archivo a /etc/systemd/system/craftpanel.service
+#   2. Ajustar "User", "WorkingDirectory" y "ExecStart" a tus rutas reales
+#   3. Ejecutar:
+#      sudo systemctl daemon-reload
+#      sudo systemctl enable --now craftpanel
+#
+# Para ver logs:
+#   journalctl -u craftpanel -f
+# ============================================================
+
+[Unit]
+Description=CraftPanel - Minecraft Multi-Server Management Daemon
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+# O un usuario dedicado sin privilegios (recomendado):
+# User=minecraft
+# Group=minecraft
+
+# Directorio donde está instalado CraftPanel
+WorkingDirectory=/opt/craftpanel
+
+# Cargar variables de entorno si existe .env
+EnvironmentFile=-/opt/craftpanel/.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+# Comando de arranque del servidor compilado
+ExecStart=/usr/bin/node /opt/craftpanel/backend/dist/index.js
+
+# Manejo de parada limpia: envía SIGTERM para que CraftPanel ejecute "save-all" y cierre los servidores
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+# Auto-reinicio automático permanente (permite actualizaciones en caliente desde la web)
+Restart=always
+RestartSec=2s
+
+# Límites de archivos abiertos (necesario para múltiples servidores y Java)
+LimitNOFILE=65535
+
+# Seguridad básica
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

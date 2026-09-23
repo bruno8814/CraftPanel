@@ -1,0 +1,41 @@
+/* Tailwind CSS base layers */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Estilos globales ─────────────────────────────── */
+
+/* Scrollbar personalizada para que combine con el tema oscuro */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2a30;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a42;
+}
+
+/* Scrollbar para Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a30 #0a0a0b;
+}
+
+/* Animación suave para transiciones de estado */
+.status-pulse {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
