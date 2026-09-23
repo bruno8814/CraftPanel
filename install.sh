@@ -42,9 +42,33 @@ CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo -e "${AZUL}[1/6] Actualizando repositorios del sistema...${NC}"
 apt-get update -y
 
-# 3. Instalar herramientas base y Java 21
-echo -e "${AZUL}[2/6] Instalando OpenJDK 21 LTS, Git y utilidades del sistema...${NC}"
-apt-get install -y curl wget git unzip ca-certificates gnupg openjdk-21-jre-headless
+# 3. Instalar herramientas base y Java 21 LTS
+echo -e "${AZUL}[2/6] Instalando herramientas base y verificando Java 21 LTS...${NC}"
+apt-get install -y curl wget git unzip ca-certificates gnupg apt-transport-https
+
+NEED_JAVA=0
+if ! command -v java >/dev/null 2>&1; then
+    NEED_JAVA=1
+else
+    JAVA_VER=$(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}' | cut -d'.' -f1)
+    if [ -z "$JAVA_VER" ] || [ "$JAVA_VER" -lt 21 ]; then
+        NEED_JAVA=1
+    fi
+fi
+
+if [ "$NEED_JAVA" -eq 1 ]; then
+    echo -e "${AMARILLO}[INFO] Instalando Java 21 LTS oficial (Adoptium Temurin / OpenJDK)...${NC}"
+    # Intentar openjdk-21 primero (Ubuntu), si no existe configurar repositorio Adoptium (Debian 12)
+    if ! apt-get install -y openjdk-21-jre-headless 2>/dev/null; then
+        echo -e "${AMARILLO}[INFO] Configurando repositorio oficial Adoptium para Debian 12...${NC}"
+        mkdir -p /etc/apt/trusted.gpg.d
+        wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/trusted.gpg.d/adoptium.gpg --yes 2>/dev/null || true
+        CODENAME=$(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release 2>/dev/null || echo "bookworm")
+        echo "deb https://packages.adoptium.net/artifactory/deb ${CODENAME} main" | tee /etc/apt/sources.list.d/adoptium.list
+        apt-get update -y
+        apt-get install -y temurin-21-jre
+    fi
+fi
 
 # 4. Instalar Node.js 20 LTS si no está presente o es antiguo
 echo -e "${AZUL}[3/6] Verificando entorno de Node.js...${NC}"
