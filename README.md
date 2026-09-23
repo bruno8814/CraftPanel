@@ -52,6 +52,14 @@ Para más detalles sobre LXC vs VM y almacenamiento ZFS, consulta la [Guía de D
 
 ---
 
+## 👥 Autores y Reconocimientos
+
+- **Diseño y Dirección del Proyecto:** Creado e impulsado por el autor del proyecto.
+- **Asistencia en Desarrollo:** Desarrollado mediante *pair-programming* en colaboración con Inteligencia Artificial (**Google DeepMind / Antigravity**), uniendo la visión, requisitos y decisiones humanas con asistencia técnica en la arquitectura, integración de APIs de Minecraft y automatización del sistema.
+
+---
+
 ## 📄 Licencia
 
 Este proyecto está bajo la Licencia MIT.
+
