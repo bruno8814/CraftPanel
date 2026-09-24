@@ -270,6 +270,24 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  /** Subir un archivo desde el PC al servidor */
+  uploadFile: async (serverId: string, dirPath: string, file: File): Promise<{ message: string }> => {
+    const token = localStorage.getItem('craftpanel_token');
+    const res = await fetch(
+      `${API_BASE}/servers/${serverId}/files/upload?filename=${encodeURIComponent(file.name)}&path=${encodeURIComponent(dirPath)}`,
+      {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: file,
+      }
+    );
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Error al subir archivo');
+    return data;
+  },
+
   // ── Fase 6: Autenticación y Usuarios ──────────────────
 
   /** Comprobar si el sistema tiene ya un dueño configurado */

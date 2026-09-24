@@ -21,6 +21,7 @@ fi
 # 2. Descargar últimos cambios de GitHub
 echo "[1/4] Descargando últimos cambios (git pull)..."
 if command -v git >/dev/null 2>&1 && [ -d ".git" ]; then
+    git stash --quiet 2>/dev/null || true
     git pull || echo "[AVISO] git pull devolvió una advertencia, continuando..."
 fi
 

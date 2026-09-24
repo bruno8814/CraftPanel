@@ -25,6 +25,7 @@ import {
   AlertCircle,
   Home,
   ChevronRight,
+  Upload,
 } from 'lucide-react';
 import { ServerState, FileItem } from '../types';
 import { api } from '../api/client';
@@ -65,6 +66,8 @@ export default function FileManager({ server }: Props) {
   const [createName, setCreateName] = useState('');
   const [renameModal, setRenameModal] = useState<FileItem | null>(null);
   const [renameNewName, setRenameNewName] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // Notificaciones
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -201,6 +204,37 @@ export default function FileManager({ server }: Props) {
     }
   };
 
+  // ── Subir archivo desde el PC ──
+  const handleUploadFile = async (file: File) => {
+    setIsUploading(true);
+    try {
+      await api.uploadFile(config.id, currentPath, file);
+      showNotification('success', `Archivo "${file.name}" subido correctamente.`);
+      await fetchFiles();
+    } catch (err: any) {
+      showNotification('error', `Error al subir: ${err.message}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // ── Drag & Drop ──
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(true);
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files.length > 0) {
+      handleUploadFile(e.dataTransfer.files[0]);
+    }
+  };
+
   // ── Helper de iconos según extensión ──
   const getFileIcon = (item: FileItem) => {
     if (item.isDirectory) {
@@ -230,7 +264,20 @@ export default function FileManager({ server }: Props) {
   const pathParts = currentPath ? currentPath.split('/') : [];
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-panel-bg">
+    <div
+      className="flex flex-col h-full overflow-hidden bg-panel-bg relative"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Overlay de Drag & Drop */}
+      {isDraggingOver && (
+        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-panel-bg/90 border-2 border-dashed border-panel-accent rounded-xl">
+          <Upload size={48} className="text-panel-accent animate-bounce mb-3" />
+          <p className="text-base font-semibold text-white">Suelta aquí tu archivo</p>
+          <p className="text-xs text-panel-muted mt-1">Se subirá a /{currentPath || 'raíz'}</p>
+        </div>
+      )}
       {/* ── Barra superior y herramientas ── */}
       <div className="border-b border-panel-border bg-panel-surface/60 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
         {/* Migas de pan (Breadcrumbs) */}
@@ -289,6 +336,28 @@ export default function FileManager({ server }: Props) {
             className="inline-flex items-center gap-1.5 rounded-lg border border-panel-border bg-panel-surface px-3 py-1.5 text-xs font-medium text-panel-muted hover:text-white hover:border-panel-accent/40 transition-colors"
           >
             <FolderPlus size={14} /> Nueva Carpeta
+          </button>
+
+          {/* Input oculto para subir archivo */}
+          <input
+            type="file"
+            id="fileUploadInput"
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.[0]) {
+                handleUploadFile(e.target.files[0]);
+                e.target.value = '';
+              }
+            }}
+          />
+
+          <button
+            onClick={() => document.getElementById('fileUploadInput')?.click()}
+            disabled={isUploading}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-panel-border bg-panel-surface px-3 py-1.5 text-xs font-medium text-panel-muted hover:text-white hover:border-panel-accent/40 transition-colors disabled:opacity-50"
+          >
+            {isUploading ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
+            {isUploading ? 'Subiendo...' : 'Subir Archivo'}
           </button>
 
           <button

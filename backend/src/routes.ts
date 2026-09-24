@@ -28,7 +28,7 @@ import { CreateServerRequest } from './types';
 import { getDownloader, getAvailableSoftware, hasDownloader } from './downloaders';
 import { searchModrinth, getProjectVersions, getProjectDetails } from './workshop';
 import { readServerProperties, saveServerProperties, saveRawServerProperties } from './properties';
-import { listFiles, getFileContent, saveFileContent, createEntry, deleteEntry, renameEntry } from './file-manager';
+import { listFiles, getFileContent, saveFileContent, createEntry, deleteEntry, renameEntry, safePath } from './file-manager';
 import {
   getSystemMetrics,
   getProcessMetrics,
@@ -1148,6 +1148,41 @@ export function createRoutes(
     }
   });
 
+  // POST /api/servers/:id/files/upload — Subir archivo desde el PC
+  router.post('/servers/:id/files/upload', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const filename = (req.query.filename as string) || 'uploaded_file';
+      const dirPath = (req.query.path as string) || '';
+      const targetDir = safePath(server.config.directory, dirPath);
+      const targetFile = path.join(targetDir, filename);
+
+      // Verify the full target is still within server dir
+      safePath(server.config.directory, dirPath ? `${dirPath}/${filename}` : filename);
+
+      // Ensure target directory exists
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+
+      const writeStream = fs.createWriteStream(targetFile);
+      req.pipe(writeStream);
+
+      writeStream.on('finish', () => {
+        res.status(201).json({ ok: true, message: `Archivo "${filename}" subido correctamente.` });
+      });
+      writeStream.on('error', (err) => {
+        res.status(500).json({ ok: false, error: `Error al escribir archivo: ${err.message}` });
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   // ═════════════════════════════════════════════════════════
   // ENDPOINTS DE AUTENTICACIÓN Y USUARIOS (Fase 6)
   // ═════════════════════════════════════════════════════════
@@ -1420,25 +1455,29 @@ export function createRoutes(
       });
       return;
     }
-
     try {
       console.log('[System] Iniciando actualización automática desde GitHub...');
 
-      // 1. git pull
-      execSync('git pull', { cwd: rootDir, timeout: 30000, stdio: 'inherit' });
+      // 1. Guardar/descartar cambios locales en archivos rastreados para evitar bloqueos
+      try {
+        execSync('git stash', { cwd: rootDir, timeout: 15000, stdio: 'ignore' });
+      } catch {}
 
-      // 2. npm install
-      execSync('npm install --silent', { cwd: rootDir, timeout: 60000, stdio: 'inherit' });
-      execSync('npm install --prefix frontend --silent', { cwd: rootDir, timeout: 60000, stdio: 'inherit' });
+      // 2. git pull
+      execSync('git pull', { cwd: rootDir, timeout: 60000, stdio: 'pipe' });
 
-      // 3. npm run build
-      execSync('npm run build', { cwd: rootDir, timeout: 60000, stdio: 'inherit' });
+      // 3. npm install
+      execSync('npm install --silent', { cwd: rootDir, timeout: 90000, stdio: 'pipe' });
+      execSync('npm install --prefix frontend --silent', { cwd: rootDir, timeout: 90000, stdio: 'pipe' });
+
+      // 4. npm run build
+      execSync('npm run build', { cwd: rootDir, timeout: 90000, stdio: 'pipe' });
 
       console.log('[System] ¡Actualización completada con éxito! Reiniciando panel...');
 
       res.json({
         ok: true,
-        message: 'CraftPanel se ha actualizado correctamente. El panel se reiniciará en 2 segundos.',
+        data: { message: 'CraftPanel se ha actualizado correctamente. El panel se reiniciará en 2 segundos.' },
       });
 
       // Reiniciar proceso de Node.js (systemd con Restart=always lo relanza al segundo)
@@ -1447,9 +1486,10 @@ export function createRoutes(
       }, 1500);
     } catch (err: any) {
       console.error('[System] Error durante la actualización:', err);
+      const detail = (err.stderr && err.stderr.toString().trim()) ? err.stderr.toString().slice(0, 500) : err.message;
       res.status(500).json({
         ok: false,
-        error: `Fallo durante la actualización: ${err.message}`,
+        error: `Fallo durante la actualización: ${detail}`,
       });
     }
   });
