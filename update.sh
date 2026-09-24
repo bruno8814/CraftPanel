@@ -29,6 +29,7 @@ fi
 echo "[2/4] Verificando dependencias de Node.js..."
 npm install --silent
 npm install --prefix frontend --silent
+chmod -R +x node_modules/.bin frontend/node_modules/.bin 2>/dev/null || true
 
 # 4. Recompilar frontend y backend
 echo "[3/4] Recompilando frontend y backend..."

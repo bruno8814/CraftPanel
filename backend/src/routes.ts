@@ -1470,6 +1470,13 @@ export function createRoutes(
       execSync('npm install --silent', { cwd: rootDir, timeout: 90000, stdio: 'pipe' });
       execSync('npm install --prefix frontend --silent', { cwd: rootDir, timeout: 90000, stdio: 'pipe' });
 
+      // Asegurar permisos de ejecución en los binarios para Linux (evita "tsc: Permission denied")
+      if (process.platform !== 'win32') {
+        try {
+          execSync('chmod -R +x node_modules/.bin frontend/node_modules/.bin 2>/dev/null || true', { cwd: rootDir, timeout: 10000, stdio: 'ignore' });
+        } catch {}
+      }
+
       // 4. npm run build
       execSync('npm run build', { cwd: rootDir, timeout: 90000, stdio: 'pipe' });
 
