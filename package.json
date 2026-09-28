@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch backend/src/index.ts",
     "dev:frontend": "npm run dev --prefix frontend",
-    "build:backend": "tsc -p backend/tsconfig.json",
+    "build:backend": "node node_modules/typescript/bin/tsc -p backend/tsconfig.json",
     "build:frontend": "npm run build --prefix frontend",
     "build": "npm run build:frontend && npm run build:backend",
     "start": "node backend/dist/index.js"

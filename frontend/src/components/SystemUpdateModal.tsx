@@ -220,6 +220,27 @@ export default function SystemUpdateModal({
             Cerrar
           </button>
 
+          {isOwner && versionInfo?.hasGit && !versionInfo?.updateAvailable && !countdown && (
+            <button
+              onClick={handleApplyUpdate}
+              disabled={updating}
+              title="Vuelve a compilar e instalar la última versión de GitHub"
+              className="flex items-center gap-1.5 rounded-lg border border-panel-border bg-panel-surface px-3 py-2 text-xs font-medium text-panel-muted hover:text-white hover:border-panel-accent/40 transition-colors disabled:opacity-50"
+            >
+              {updating ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  Recompilando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={13} />
+                  Recompilar / Sincronizar
+                </>
+              )}
+            </button>
+          )}
+
           {isOwner && versionInfo?.hasGit && versionInfo?.updateAvailable && !countdown && (
             <button
               onClick={handleApplyUpdate}

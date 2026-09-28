@@ -22,14 +22,14 @@ fi
 echo "[1/4] Descargando últimos cambios (git pull)..."
 if command -v git >/dev/null 2>&1 && [ -d ".git" ]; then
     git stash --quiet 2>/dev/null || true
-    git pull || echo "[AVISO] git pull devolvió una advertencia, continuando..."
+    git fetch origin main 2>/dev/null && git reset --hard origin/main 2>/dev/null || git pull || echo "[AVISO] git pull devolvió una advertencia, continuando..."
 fi
 
 # 3. Actualizar dependencias si hubo cambios en package.json
 echo "[2/4] Verificando dependencias de Node.js..."
-npm install --include=dev --silent
-npm install --prefix frontend --include=dev --silent
-chmod -R +x node_modules/.bin frontend/node_modules/.bin 2>/dev/null || true
+npm install --include=dev --no-audit --no-fund
+(cd frontend && npm install --include=dev --no-audit --no-fund)
+chmod -R +x node_modules/.bin frontend/node_modules/.bin update.sh start.sh 2>/dev/null || true
 
 # 4. Recompilar frontend y backend
 echo "[3/4] Recompilando frontend y backend..."

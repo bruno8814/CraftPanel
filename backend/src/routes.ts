@@ -1567,44 +1567,97 @@ export function createRoutes(
     try {
       console.log('[System] Iniciando actualización automática desde GitHub...');
 
-      // Guardar el commit antes del pull para hacer rollback automático si falla el build
-      let preCommit = '';
-      try {
-        preCommit = execSync('git rev-parse HEAD', { cwd: rootDir, timeout: 10000, stdio: 'pipe' }).toString().trim();
-      } catch {}
-
-      // 1. Guardar/descartar cambios locales en archivos rastreados para evitar bloqueos
+      // 1. Guardar/descartar cambios locales no deseados en archivos rastreados
       try {
         execSync('git stash', { cwd: rootDir, timeout: 15000, stdio: 'ignore' });
       } catch {}
 
-      // 2. git pull
-      execSync('git pull', { cwd: rootDir, timeout: 60000, stdio: 'pipe' });
+      // 2. Traer últimos cambios de GitHub
+      // Intentamos sincronizar con origin/main para evitar conflictos de merge locales
+      try {
+        execSync('git fetch origin main', { cwd: rootDir, timeout: 60000, stdio: 'pipe' });
+        execSync('git reset --hard origin/main', { cwd: rootDir, timeout: 30000, stdio: 'pipe' });
+      } catch {
+        execSync('git pull', { cwd: rootDir, timeout: 60000, stdio: 'pipe' });
+      }
 
-      // 3. npm install (Forzar NODE_ENV=development e --include=dev para que siempre instale typescript y vite)
-      const updateEnv = { ...process.env, NODE_ENV: 'development' };
-      execSync('npm install --include=dev --silent', { cwd: rootDir, timeout: 90000, stdio: 'pipe', env: updateEnv });
-      execSync('npm install --prefix frontend --include=dev --silent', { cwd: rootDir, timeout: 90000, stdio: 'pipe', env: updateEnv });
+      // 3. Preparar entorno con PATH extendido hacia los binarios locales
+      const rootBin = path.join(rootDir, 'node_modules', '.bin');
+      const frontendBin = path.join(rootDir, 'frontend', 'node_modules', '.bin');
+      const currentPath = process.env.PATH || '';
+      const pathSeparator = process.platform === 'win32' ? ';' : ':';
+      const extendedPath = `${rootBin}${pathSeparator}${frontendBin}${pathSeparator}${currentPath}`;
 
-      // Asegurar permisos de ejecución en los binarios para Linux (evita "tsc: Permission denied")
+      const updateEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        NODE_ENV: 'development',
+        PATH: extendedPath,
+      };
+
+      // 4. Instalar dependencias en raíz y frontend
+      console.log('[System] Instalando dependencias en la raíz...');
+      execSync('npm install --include=dev --no-audit --no-fund', {
+        cwd: rootDir,
+        timeout: 180000,
+        stdio: 'pipe',
+        env: updateEnv,
+      });
+
+      console.log('[System] Instalando dependencias en frontend...');
+      execSync('npm install --include=dev --no-audit --no-fund', {
+        cwd: path.join(rootDir, 'frontend'),
+        timeout: 180000,
+        stdio: 'pipe',
+        env: updateEnv,
+      });
+
+      // Asegurar permisos de ejecución en los binarios para Linux
       if (process.platform !== 'win32') {
         try {
-          execSync('chmod -R +x node_modules/.bin frontend/node_modules/.bin 2>/dev/null || true', { cwd: rootDir, timeout: 10000, stdio: 'ignore' });
+          execSync('chmod -R +x node_modules/.bin frontend/node_modules/.bin update.sh start.sh 2>/dev/null || true', {
+            cwd: rootDir,
+            timeout: 15000,
+            stdio: 'ignore',
+          });
         } catch {}
       }
 
-      // 4. npm run build
-      try {
-        execSync('npm run build', { cwd: rootDir, timeout: 120000, stdio: 'pipe', env: updateEnv });
-      } catch (buildErr: any) {
-        // Si falla la compilación, revertir el git pull para no dejar el panel en un estado fantasma
-        if (preCommit) {
-          try {
-            execSync(`git reset --hard ${preCommit}`, { cwd: rootDir, timeout: 15000, stdio: 'ignore' });
-            console.warn(`[System] Revertido a commit previo ${preCommit} tras fallo de compilación.`);
-          } catch {}
-        }
-        throw buildErr;
+      // 5. Compilar frontend (usando vite.js directamente para evitar problemas de resolución en /bin/sh)
+      console.log('[System] Compilando frontend...');
+      const viteBin = path.join(rootDir, 'frontend', 'node_modules', 'vite', 'bin', 'vite.js');
+      if (fs.existsSync(viteBin)) {
+        execSync(`node "${viteBin}" build`, {
+          cwd: path.join(rootDir, 'frontend'),
+          timeout: 180000,
+          stdio: 'pipe',
+          env: updateEnv,
+        });
+      } else {
+        execSync('npm run build', {
+          cwd: path.join(rootDir, 'frontend'),
+          timeout: 180000,
+          stdio: 'pipe',
+          env: updateEnv,
+        });
+      }
+
+      // 6. Compilar backend (usando tsc de typescript directamente)
+      console.log('[System] Compilando backend...');
+      const tscBin = path.join(rootDir, 'node_modules', 'typescript', 'bin', 'tsc');
+      if (fs.existsSync(tscBin)) {
+        execSync(`node "${tscBin}" -p backend/tsconfig.json`, {
+          cwd: rootDir,
+          timeout: 180000,
+          stdio: 'pipe',
+          env: updateEnv,
+        });
+      } else {
+        execSync('npx tsc -p backend/tsconfig.json', {
+          cwd: rootDir,
+          timeout: 180000,
+          stdio: 'pipe',
+          env: updateEnv,
+        });
       }
 
       console.log('[System] ¡Actualización completada con éxito! Reiniciando panel...');
@@ -1620,10 +1673,23 @@ export function createRoutes(
       }, 1500);
     } catch (err: any) {
       console.error('[System] Error durante la actualización:', err);
-      const detail = (err.stderr && err.stderr.toString().trim()) ? err.stderr.toString().slice(0, 500) : err.message;
+      const stdout = err.stdout ? err.stdout.toString().trim() : '';
+      const stderr = err.stderr ? err.stderr.toString().trim() : '';
+      let detail = '';
+      if (stderr) {
+        detail = stderr;
+      } else if (stdout) {
+        detail = stdout;
+      } else {
+        detail = err.message || 'Error desconocido';
+      }
+
+      const lines = detail.split('\n').map((l: string) => l.trim()).filter(Boolean);
+      const summary = lines.length > 8 ? lines.slice(-8).join('\n') : detail;
+
       res.status(500).json({
         ok: false,
-        error: `Fallo durante la actualización: ${detail}`,
+        error: `Fallo durante la actualización:\n${summary}`,
       });
     }
   });
