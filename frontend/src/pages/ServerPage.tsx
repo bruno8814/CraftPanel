@@ -48,6 +48,7 @@ import { Schedules } from '../components/Schedules';
 import { AlertsSettings } from '../components/AlertsSettings';
 import CrashAndLogsViewer from '../components/CrashAndLogsViewer';
 import PlayersManager from '../components/PlayersManager';
+import ErrorBoundary from '../components/ErrorBoundary';
 import SafeDeleteServerModal from '../components/SafeDeleteServerModal';
 import { useAuth } from '../context/AuthContext';
 
@@ -408,7 +409,9 @@ export default function ServerPage() {
         )}
 
         {section === 'players' && (
-          <PlayersManager server={server} />
+          <ErrorBoundary fallbackTitle="Error al cargar la sección de Jugadores">
+            <PlayersManager server={server} />
+          </ErrorBoundary>
         )}
 
         {section === 'logs' && (
@@ -438,7 +441,9 @@ export default function ServerPage() {
         )}
 
         {section === 'settings' && (
-          <ServerSettings server={server} />
+          <ErrorBoundary fallbackTitle="Error al cargar la sección de Ajustes">
+            <ServerSettings server={server} />
+          </ErrorBoundary>
         )}
 
         {section === 'schedules' && (

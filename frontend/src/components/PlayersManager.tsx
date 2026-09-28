@@ -9,13 +9,12 @@
 //   5. Acciones en tiempo real: Kick, Ban, Gamemode, TP Spawn, Susurro
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Users,
   UserPlus,
   UserMinus,
   UserCheck,
-  UserX,
   Shield,
   ShieldAlert,
   ShieldCheck,
@@ -31,8 +30,6 @@ import {
   AlertCircle,
   X,
   Wifi,
-  Clock,
-  Sparkles,
   Info,
 } from 'lucide-react';
 import {
@@ -62,7 +59,7 @@ export default function PlayersManager({ server }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Datos del backend
+  // Datos normalizados del backend
   const [playersData, setPlayersData] = useState<ServerPlayersData>({
     onlinePlayers: [],
     ops: [],
@@ -96,15 +93,41 @@ export default function PlayersManager({ server }: Props) {
   const [modalGamemode, setModalGamemode] = useState<'survival' | 'creative' | 'adventure' | 'spectator'>('survival');
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Normalizador defensivo para evitar cualquier crash de datos incompletos
+  const normalizeData = (raw: any): ServerPlayersData => {
+    if (!raw || typeof raw !== 'object') {
+      return {
+        onlinePlayers: [],
+        ops: [],
+        whitelist: [],
+        bannedPlayers: [],
+        bannedIps: [],
+        whitelistEnabled: false,
+      };
+    }
+    return {
+      onlinePlayers: Array.isArray(raw.onlinePlayers)
+        ? raw.onlinePlayers
+        : Array.isArray(raw.players)
+        ? raw.players
+        : [],
+      ops: Array.isArray(raw.ops) ? raw.ops : [],
+      whitelist: Array.isArray(raw.whitelist) ? raw.whitelist : [],
+      bannedPlayers: Array.isArray(raw.bannedPlayers) ? raw.bannedPlayers : [],
+      bannedIps: Array.isArray(raw.bannedIps) ? raw.bannedIps : [],
+      whitelistEnabled: Boolean(raw.whitelistEnabled),
+    };
+  };
+
   // Cargar datos
   const fetchPlayers = useCallback(async (isSilent = false) => {
     if (!isSilent) setRefreshing(true);
     try {
       const data = await api.getServerPlayers(config.id);
-      setPlayersData(data);
+      setPlayersData(normalizeData(data));
     } catch (err: any) {
       if (!isSilent) {
-        showToast('error', `Error al cargar jugadores: ${err.message}`);
+        showToast('error', `Error al cargar jugadores: ${err.message || 'Error de conexión'}`);
       }
     } finally {
       setLoading(false);
@@ -121,15 +144,30 @@ export default function PlayersManager({ server }: Props) {
     return () => clearInterval(timer);
   }, [fetchPlayers, isOnline]);
 
-  // Sets auxiliares para búsqueda rápida
-  const opsSet = new Set(playersData.ops.map((o) => o.name.toLowerCase()));
-  const whitelistSet = new Set(playersData.whitelist.map((w) => w.name.toLowerCase()));
+  // Colecciones seguras garantizadas
+  const safeOnlinePlayers: ConnectedPlayer[] = playersData?.onlinePlayers || [];
+  const safeOps: OpPlayer[] = playersData?.ops || [];
+  const safeWhitelist: WhitelistPlayer[] = playersData?.whitelist || [];
+  const safeBannedPlayers: BannedPlayer[] = playersData?.bannedPlayers || [];
+  const safeBannedIps: BannedIp[] = playersData?.bannedIps || [];
+  const isWhitelistEnabled: boolean = Boolean(playersData?.whitelistEnabled);
+
+  // Sets para búsqueda rápida segura
+  const opsSet = useMemo(() => {
+    return new Set(
+      safeOps
+        .map((o) => (o?.name ? String(o.name).trim().toLowerCase() : ''))
+        .filter(Boolean)
+    );
+  }, [safeOps]);
+
+  const cleanQuery = (searchQuery || '').trim().toLowerCase();
 
   // ── Acciones de Whitelist ──
   const handleToggleWhitelist = async () => {
     setActionLoading(true);
     try {
-      const res = await api.toggleWhitelist(config.id, !playersData.whitelistEnabled);
+      const res = await api.toggleWhitelist(config.id, !isWhitelistEnabled);
       setPlayersData((prev) => ({ ...prev, whitelistEnabled: res.whitelistEnabled }));
       showToast('success', `Lista blanca ${res.whitelistEnabled ? 'activada' : 'desactivada'}.`);
     } catch (err: any) {
@@ -140,11 +178,12 @@ export default function PlayersManager({ server }: Props) {
   };
 
   const handleAddWhitelist = async () => {
-    if (!targetPlayerName.trim()) return;
+    const clean = targetPlayerName.trim();
+    if (!clean) return;
     setActionLoading(true);
     try {
-      await api.addWhitelistPlayer(config.id, targetPlayerName.trim());
-      showToast('success', `Jugador "${targetPlayerName.trim()}" añadido a la lista blanca.`);
+      await api.addWhitelistPlayer(config.id, clean);
+      showToast('success', `Jugador "${clean}" añadido a la lista blanca.`);
       setModalType(null);
       setTargetPlayerName('');
       await fetchPlayers(true);
@@ -168,11 +207,12 @@ export default function PlayersManager({ server }: Props) {
 
   // ── Acciones de OPs ──
   const handleAddOp = async () => {
-    if (!targetPlayerName.trim()) return;
+    const clean = targetPlayerName.trim();
+    if (!clean) return;
     setActionLoading(true);
     try {
-      await api.addOpPlayer(config.id, targetPlayerName.trim(), modalLevel);
-      showToast('success', `Jugador "${targetPlayerName.trim()}" configurado como operador (Nivel ${modalLevel}).`);
+      await api.addOpPlayer(config.id, clean, modalLevel);
+      showToast('success', `Jugador "${clean}" configurado como operador (Nivel ${modalLevel}).`);
       setModalType(null);
       setTargetPlayerName('');
       await fetchPlayers(true);
@@ -196,11 +236,12 @@ export default function PlayersManager({ server }: Props) {
 
   // ── Acciones de Baneos ──
   const handleBanPlayer = async () => {
-    if (!targetPlayerName.trim()) return;
+    const clean = targetPlayerName.trim();
+    if (!clean) return;
     setActionLoading(true);
     try {
-      await api.banPlayer(config.id, targetPlayerName.trim(), modalInput.trim() || 'Baneado por el administrador');
-      showToast('success', `Jugador "${targetPlayerName.trim()}" ha sido baneado.`);
+      await api.banPlayer(config.id, clean, modalInput.trim() || 'Baneado por el administrador');
+      showToast('success', `Jugador "${clean}" ha sido baneado.`);
       setModalType(null);
       setTargetPlayerName('');
       setModalInput('');
@@ -224,11 +265,12 @@ export default function PlayersManager({ server }: Props) {
   };
 
   const handleBanIp = async () => {
-    if (!targetPlayerName.trim()) return;
+    const clean = targetPlayerName.trim();
+    if (!clean) return;
     setActionLoading(true);
     try {
-      await api.banIp(config.id, targetPlayerName.trim(), modalInput.trim() || 'IP bloqueada por el administrador');
-      showToast('success', `IP "${targetPlayerName.trim()}" baneada.`);
+      await api.banIp(config.id, clean, modalInput.trim() || 'IP bloqueada por el administrador');
+      showToast('success', `IP "${clean}" baneada.`);
       setModalType(null);
       setTargetPlayerName('');
       setModalInput('');
@@ -330,7 +372,7 @@ export default function PlayersManager({ server }: Props) {
         </div>
       )}
 
-      {/* ── Barra Superior / Pestañas ── */}
+      {/* ── Barra Superior / Título ── */}
       <div className="border-b border-panel-border bg-panel-surface/60 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
@@ -341,7 +383,7 @@ export default function PlayersManager({ server }: Props) {
             </span>
           </div>
           <p className="text-xs text-panel-muted mt-1">
-            Administra jugadores en vivo, operadores (ops), lista blanca de acceso y baneos.
+            Administra jugadores en vivo, operadores (ops), lista blanca de acceso y sanciones.
           </p>
         </div>
 
@@ -372,7 +414,7 @@ export default function PlayersManager({ server }: Props) {
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span>Conectados en Vivo</span>
           <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-panel-bg border border-panel-border font-mono text-emerald-400">
-            {playersData.onlinePlayers.length}
+            {safeOnlinePlayers.length}
           </span>
         </button>
 
@@ -390,7 +432,7 @@ export default function PlayersManager({ server }: Props) {
           <Crown size={15} className="text-amber-400" />
           <span>Operadores (Ops)</span>
           <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-panel-bg border border-panel-border font-mono text-amber-400">
-            {playersData.ops.length}
+            {safeOps.length}
           </span>
         </button>
 
@@ -405,12 +447,12 @@ export default function PlayersManager({ server }: Props) {
               : 'border-transparent text-panel-muted hover:text-gray-300'
           }`}
         >
-          <ShieldCheck size={15} className={playersData.whitelistEnabled ? 'text-emerald-400' : 'text-gray-400'} />
+          <ShieldCheck size={15} className={isWhitelistEnabled ? 'text-emerald-400' : 'text-gray-400'} />
           <span>Lista Blanca (Whitelist)</span>
           <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-panel-bg border border-panel-border font-mono">
-            {playersData.whitelist.length}
+            {safeWhitelist.length}
           </span>
-          {playersData.whitelistEnabled ? (
+          {isWhitelistEnabled ? (
             <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-medium">ON</span>
           ) : (
             <span className="text-[10px] px-1.5 py-0.2 rounded bg-gray-500/20 text-gray-400 font-medium">OFF</span>
@@ -431,7 +473,7 @@ export default function PlayersManager({ server }: Props) {
           <Gavel size={15} className="text-red-400" />
           <span>Baneados</span>
           <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-panel-bg border border-panel-border font-mono text-red-400">
-            {playersData.bannedPlayers.length + playersData.bannedIps.length}
+            {safeBannedPlayers.length + safeBannedIps.length}
           </span>
         </button>
       </div>
@@ -456,12 +498,12 @@ export default function PlayersManager({ server }: Props) {
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-white">Jugadores Activos</span>
                 <span className="text-xs font-mono px-2 py-0.5 rounded bg-panel-surface border border-panel-border text-panel-accent">
-                  {playersData.onlinePlayers.length} conectados
+                  {safeOnlinePlayers.length} conectados
                 </span>
               </div>
             </div>
 
-            {playersData.onlinePlayers.length === 0 ? (
+            {safeOnlinePlayers.length === 0 ? (
               <div className="rounded-xl border border-panel-border bg-panel-surface/20 p-12 text-center flex flex-col items-center justify-center">
                 <div className="w-16 h-16 rounded-full bg-panel-surface border border-panel-border flex items-center justify-center mb-3 text-panel-muted">
                   <Users size={28} />
@@ -473,38 +515,39 @@ export default function PlayersManager({ server }: Props) {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {playersData.onlinePlayers.map((player) => {
-                  const isPlayerOp = opsSet.has(player.name.toLowerCase());
+                {safeOnlinePlayers.map((player) => {
+                  const playerName = player?.name || 'Desconocido';
+                  const isPlayerOp = opsSet.has(playerName.toLowerCase());
                   return (
                     <div
-                      key={player.name}
+                      key={playerName}
                       className="rounded-xl border border-panel-border bg-panel-surface/50 p-4 flex flex-col justify-between hover:border-panel-accent/40 transition-colors shadow-sm"
                     >
                       <div className="flex items-start gap-3">
                         <img
-                          src={`https://mc-heads.net/head/${player.uuid || player.name}/64`}
-                          alt={player.name}
+                          src={`https://mc-heads.net/head/${player?.uuid || playerName}/64`}
+                          alt={playerName}
                           className="w-12 h-12 rounded-lg bg-panel-bg border border-panel-border shadow-inner pixelated shrink-0"
                           onError={(e) => {
-                            (e.target as HTMLImageElement).src = `https://mc-heads.net/avatar/${player.name}/64`;
+                            (e.target as HTMLImageElement).src = `https://mc-heads.net/avatar/${playerName}/64`;
                           }}
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-white text-sm truncate">{player.name}</span>
+                            <span className="font-bold text-white text-sm truncate">{playerName}</span>
                             {isPlayerOp && (
                               <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">
                                 <Crown size={10} /> OP
                               </span>
                             )}
                           </div>
-                          {player.uuid && (
+                          {player?.uuid && (
                             <p className="text-[10px] text-panel-muted font-mono truncate" title={player.uuid}>
                               {player.uuid}
                             </p>
                           )}
                           <div className="flex items-center gap-2 mt-1">
-                            {typeof player.pingMs === 'number' && (
+                            {typeof player?.pingMs === 'number' && (
                               <span
                                 className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded ${
                                   player.pingMs < 60
@@ -532,7 +575,7 @@ export default function PlayersManager({ server }: Props) {
                           {/* Alternar OP */}
                           {isPlayerOp ? (
                             <button
-                              onClick={() => handleRemoveOp(player.name)}
+                              onClick={() => handleRemoveOp(playerName)}
                               className="px-2 py-1 rounded bg-panel-bg hover:bg-amber-950/30 border border-panel-border hover:border-amber-500/40 text-[11px] font-medium text-amber-400 flex items-center gap-1"
                               title="Revocar operador"
                             >
@@ -541,7 +584,7 @@ export default function PlayersManager({ server }: Props) {
                           ) : (
                             <button
                               onClick={() => {
-                                setTargetPlayerName(player.name);
+                                setTargetPlayerName(playerName);
                                 setModalLevel(4);
                                 setModalType('add-op');
                               }}
@@ -555,7 +598,7 @@ export default function PlayersManager({ server }: Props) {
                           {/* Gamemode */}
                           <button
                             onClick={() => {
-                              setTargetPlayerName(player.name);
+                              setTargetPlayerName(playerName);
                               setModalGamemode('survival');
                               setModalType('gamemode');
                             }}
@@ -567,7 +610,7 @@ export default function PlayersManager({ server }: Props) {
 
                           {/* TP Spawn */}
                           <button
-                            onClick={() => handleTeleportSpawn(player.name)}
+                            onClick={() => handleTeleportSpawn(playerName)}
                             className="px-2 py-1 rounded bg-panel-bg hover:bg-panel-surface border border-panel-border text-[11px] font-medium text-gray-300 hover:text-white flex items-center gap-1"
                             title="Teletransportar al spawn mundial"
                           >
@@ -577,7 +620,7 @@ export default function PlayersManager({ server }: Props) {
                           {/* Mensaje privado */}
                           <button
                             onClick={() => {
-                              setTargetPlayerName(player.name);
+                              setTargetPlayerName(playerName);
                               setModalInput('');
                               setModalType('whisper');
                             }}
@@ -590,7 +633,7 @@ export default function PlayersManager({ server }: Props) {
                           {/* Expulsar */}
                           <button
                             onClick={() => {
-                              setTargetPlayerName(player.name);
+                              setTargetPlayerName(playerName);
                               setModalInput('Expulsado por el administrador');
                               setModalType('kick');
                             }}
@@ -603,7 +646,7 @@ export default function PlayersManager({ server }: Props) {
                           {/* Banear */}
                           <button
                             onClick={() => {
-                              setTargetPlayerName(player.name);
+                              setTargetPlayerName(playerName);
                               setModalInput('Baneado por el administrador');
                               setModalType('ban-player');
                             }}
@@ -663,7 +706,7 @@ export default function PlayersManager({ server }: Props) {
               <div><strong className="text-amber-400">4:</strong> Administrador total (/stop)</div>
             </div>
 
-            {playersData.ops.length === 0 ? (
+            {safeOps.length === 0 ? (
               <div className="rounded-xl border border-panel-border bg-panel-surface/20 p-12 text-center flex flex-col items-center justify-center">
                 <Crown size={28} className="text-panel-muted mb-2" />
                 <p className="text-sm font-medium text-white">No hay operadores registrados</p>
@@ -673,41 +716,46 @@ export default function PlayersManager({ server }: Props) {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {playersData.ops
-                  .filter((op) => op.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                  .map((op) => (
-                    <div
-                      key={op.uuid || op.name}
-                      className="rounded-xl border border-panel-border bg-panel-surface/50 p-4 flex items-center justify-between gap-3 hover:border-amber-500/30 transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <img
-                          src={`https://mc-heads.net/avatar/${op.name}/64`}
-                          alt={op.name}
-                          className="w-11 h-11 rounded-lg bg-panel-bg border border-panel-border pixelated shrink-0"
-                        />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-white text-sm truncate">{op.name}</span>
-                            <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                              Nivel {op.level || 4}
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-panel-muted font-mono truncate" title={op.uuid}>
-                            {op.uuid}
-                          </p>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => handleRemoveOp(op.name)}
-                        className="px-2.5 py-1.5 rounded-lg border border-panel-border hover:border-red-500/40 bg-panel-bg hover:bg-red-950/30 text-xs text-red-400 font-medium transition-colors shrink-0"
-                        title="Quitar permisos de operador"
+                {safeOps
+                  .filter((op) => (op?.name || '').toLowerCase().includes(cleanQuery))
+                  .map((op) => {
+                    const opName = op?.name || 'Desconocido';
+                    return (
+                      <div
+                        key={op?.uuid || opName}
+                        className="rounded-xl border border-panel-border bg-panel-surface/50 p-4 flex items-center justify-between gap-3 hover:border-amber-500/30 transition-colors"
                       >
-                        Revocar
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex items-center gap-3 min-w-0">
+                          <img
+                            src={`https://mc-heads.net/avatar/${opName}/64`}
+                            alt={opName}
+                            className="w-11 h-11 rounded-lg bg-panel-bg border border-panel-border pixelated shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white text-sm truncate">{opName}</span>
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                Nivel {op?.level || 4}
+                              </span>
+                            </div>
+                            {op?.uuid && (
+                              <p className="text-[10px] text-panel-muted font-mono truncate" title={op.uuid}>
+                                {op.uuid}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleRemoveOp(opName)}
+                          className="px-2.5 py-1.5 rounded-lg border border-panel-border hover:border-red-500/40 bg-panel-bg hover:bg-red-950/30 text-xs text-red-400 font-medium transition-colors shrink-0"
+                          title="Quitar permisos de operador"
+                        >
+                          Revocar
+                        </button>
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </div>
@@ -723,7 +771,7 @@ export default function PlayersManager({ server }: Props) {
               <div className="flex items-center gap-3">
                 <div
                   className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                    playersData.whitelistEnabled
+                    isWhitelistEnabled
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                       : 'bg-panel-bg text-panel-muted border border-panel-border'
                   }`}
@@ -733,7 +781,7 @@ export default function PlayersManager({ server }: Props) {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-white text-sm">Estado de la Lista Blanca</span>
-                    {playersData.whitelistEnabled ? (
+                    {isWhitelistEnabled ? (
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                         PROTEGIDO
                       </span>
@@ -744,7 +792,7 @@ export default function PlayersManager({ server }: Props) {
                     )}
                   </div>
                   <p className="text-xs text-panel-muted mt-0.5">
-                    {playersData.whitelistEnabled
+                    {isWhitelistEnabled
                       ? 'Solo los jugadores presentes en la lista pueden entrar al servidor.'
                       : 'Cualquier jugador puede unirse sin restricciones.'}
                   </p>
@@ -755,13 +803,13 @@ export default function PlayersManager({ server }: Props) {
                 onClick={handleToggleWhitelist}
                 disabled={actionLoading}
                 className={`px-4 py-2 rounded-xl text-xs font-semibold shadow transition-colors flex items-center gap-2 ${
-                  playersData.whitelistEnabled
+                  isWhitelistEnabled
                     ? 'bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30'
                     : 'bg-emerald-500 hover:bg-emerald-600 text-black'
                 }`}
               >
                 <Shield size={14} />
-                <span>{playersData.whitelistEnabled ? 'Desactivar Lista Blanca' : 'Activar Lista Blanca'}</span>
+                <span>{isWhitelistEnabled ? 'Desactivar Lista Blanca' : 'Activar Lista Blanca'}</span>
               </button>
             </div>
 
@@ -790,7 +838,7 @@ export default function PlayersManager({ server }: Props) {
               </button>
             </div>
 
-            {playersData.whitelist.length === 0 ? (
+            {safeWhitelist.length === 0 ? (
               <div className="rounded-xl border border-panel-border bg-panel-surface/20 p-12 text-center flex flex-col items-center justify-center">
                 <ShieldCheck size={28} className="text-panel-muted mb-2" />
                 <p className="text-sm font-medium text-white">La lista blanca está vacía</p>
@@ -800,33 +848,36 @@ export default function PlayersManager({ server }: Props) {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {playersData.whitelist
-                  .filter((w) => w.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                {safeWhitelist
+                  .filter((w) => (w?.name || '').toLowerCase().includes(cleanQuery))
                   .map((player) => {
-                    const isOp = opsSet.has(player.name.toLowerCase());
+                    const playerName = player?.name || 'Desconocido';
+                    const isOp = opsSet.has(playerName.toLowerCase());
                     return (
                       <div
-                        key={player.uuid || player.name}
+                        key={player?.uuid || playerName}
                         className="rounded-xl border border-panel-border bg-panel-surface/50 p-4 flex items-center justify-between gap-3 hover:border-panel-accent/40 transition-colors"
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <img
-                            src={`https://mc-heads.net/avatar/${player.name}/64`}
-                            alt={player.name}
+                            src={`https://mc-heads.net/avatar/${playerName}/64`}
+                            alt={playerName}
                             className="w-11 h-11 rounded-lg bg-panel-bg border border-panel-border pixelated shrink-0"
                           />
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-white text-sm truncate">{player.name}</span>
+                              <span className="font-bold text-white text-sm truncate">{playerName}</span>
                               {isOp && (
                                 <span className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">
                                   <Crown size={9} /> OP
                                 </span>
                               )}
                             </div>
-                            <p className="text-[10px] text-panel-muted font-mono truncate" title={player.uuid}>
-                              {player.uuid}
-                            </p>
+                            {player?.uuid && (
+                              <p className="text-[10px] text-panel-muted font-mono truncate" title={player.uuid}>
+                                {player.uuid}
+                              </p>
+                            )}
                           </div>
                         </div>
 
@@ -834,7 +885,7 @@ export default function PlayersManager({ server }: Props) {
                           {!isOp && (
                             <button
                               onClick={() => {
-                                setTargetPlayerName(player.name);
+                                setTargetPlayerName(playerName);
                                 setModalLevel(4);
                                 setModalType('add-op');
                               }}
@@ -845,7 +896,7 @@ export default function PlayersManager({ server }: Props) {
                             </button>
                           )}
                           <button
-                            onClick={() => handleRemoveWhitelist(player.name)}
+                            onClick={() => handleRemoveWhitelist(playerName)}
                             className="p-1.5 rounded-lg border border-panel-border hover:border-red-500/40 text-panel-muted hover:text-red-400 bg-panel-bg"
                             title="Eliminar de la lista blanca"
                           >
@@ -874,7 +925,7 @@ export default function PlayersManager({ server }: Props) {
                     banSubTab === 'players' ? 'bg-panel-bg text-white font-semibold shadow' : 'text-panel-muted hover:text-white'
                   }`}
                 >
-                  Jugadores ({playersData.bannedPlayers.length})
+                  Jugadores ({safeBannedPlayers.length})
                 </button>
                 <button
                   onClick={() => setBanSubTab('ips')}
@@ -882,7 +933,7 @@ export default function PlayersManager({ server }: Props) {
                     banSubTab === 'ips' ? 'bg-panel-bg text-white font-semibold shadow' : 'text-panel-muted hover:text-white'
                   }`}
                 >
-                  Direcciones IP ({playersData.bannedIps.length})
+                  Direcciones IP ({safeBannedIps.length})
                 </button>
               </div>
 
@@ -917,7 +968,7 @@ export default function PlayersManager({ server }: Props) {
             {/* Lista de Jugadores Baneados */}
             {banSubTab === 'players' && (
               <>
-                {playersData.bannedPlayers.length === 0 ? (
+                {safeBannedPlayers.length === 0 ? (
                   <div className="rounded-xl border border-panel-border bg-panel-surface/20 p-12 text-center flex flex-col items-center justify-center">
                     <UserCheck size={28} className="text-emerald-400 mb-2" />
                     <p className="text-sm font-medium text-white">No hay jugadores baneados</p>
@@ -927,45 +978,49 @@ export default function PlayersManager({ server }: Props) {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {playersData.bannedPlayers.map((ban) => (
-                      <div
-                        key={ban.uuid || ban.name}
-                        className="rounded-xl border border-red-500/20 bg-panel-surface/50 p-4 flex flex-col justify-between gap-3 hover:border-red-500/40 transition-colors"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="relative shrink-0">
-                            <img
-                              src={`https://mc-heads.net/avatar/${ban.name}/64`}
-                              alt={ban.name}
-                              className="w-12 h-12 rounded-lg bg-panel-bg border border-panel-border pixelated grayscale opacity-80"
-                            />
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <span className="text-red-500 font-bold text-xl drop-shadow">✕</span>
+                    {safeBannedPlayers.map((ban) => {
+                      const banName = ban?.name || 'Desconocido';
+                      const createdStr = ban?.created ? String(ban.created).slice(0, 16) : '';
+                      return (
+                        <div
+                          key={ban?.uuid || banName}
+                          className="rounded-xl border border-red-500/20 bg-panel-surface/50 p-4 flex flex-col justify-between gap-3 hover:border-red-500/40 transition-colors"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="relative shrink-0">
+                              <img
+                                src={`https://mc-heads.net/avatar/${banName}/64`}
+                                alt={banName}
+                                className="w-12 h-12 rounded-lg bg-panel-bg border border-panel-border pixelated grayscale opacity-80"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-red-500 font-bold text-xl drop-shadow">✕</span>
+                              </div>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="font-bold text-white text-sm truncate block">{banName}</span>
+                              <p className="text-[11px] text-red-300 font-medium mt-0.5 line-clamp-2">
+                                Motivo: {ban?.reason || 'Sin motivo especificado'}
+                              </p>
+                              {createdStr && (
+                                <p className="text-[10px] text-panel-muted mt-1">
+                                  Fecha: {createdStr}
+                                </p>
+                              )}
                             </div>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <span className="font-bold text-white text-sm truncate block">{ban.name}</span>
-                            <p className="text-[11px] text-red-300 font-medium mt-0.5 line-clamp-2">
-                              Motivo: {ban.reason || 'Sin motivo especificado'}
-                            </p>
-                            {ban.created && (
-                              <p className="text-[10px] text-panel-muted mt-1">
-                                Fecha: {ban.created.slice(0, 16)}
-                              </p>
-                            )}
+
+                          <div className="pt-2 border-t border-panel-border/60 flex items-center justify-end">
+                            <button
+                              onClick={() => handleUnbanPlayer(banName)}
+                              className="px-3 py-1 rounded-lg bg-panel-bg hover:bg-emerald-950/30 border border-panel-border hover:border-emerald-500/40 text-xs text-emerald-400 font-medium transition-colors"
+                            >
+                              Desbanear
+                            </button>
                           </div>
                         </div>
-
-                        <div className="pt-2 border-t border-panel-border/60 flex items-center justify-end">
-                          <button
-                            onClick={() => handleUnbanPlayer(ban.name)}
-                            className="px-3 py-1 rounded-lg bg-panel-bg hover:bg-emerald-950/30 border border-panel-border hover:border-emerald-500/40 text-xs text-emerald-400 font-medium transition-colors"
-                          >
-                            Desbanear
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </>
@@ -974,7 +1029,7 @@ export default function PlayersManager({ server }: Props) {
             {/* Lista de IPs Baneadas */}
             {banSubTab === 'ips' && (
               <>
-                {playersData.bannedIps.length === 0 ? (
+                {safeBannedIps.length === 0 ? (
                   <div className="rounded-xl border border-panel-border bg-panel-surface/20 p-12 text-center flex flex-col items-center justify-center">
                     <ShieldCheck size={28} className="text-emerald-400 mb-2" />
                     <p className="text-sm font-medium text-white">No hay direcciones IP bloqueadas</p>
@@ -984,31 +1039,34 @@ export default function PlayersManager({ server }: Props) {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {playersData.bannedIps.map((ban) => (
-                      <div
-                        key={ban.ip}
-                        className="rounded-xl border border-red-500/20 bg-panel-surface/50 p-4 flex items-center justify-between gap-3 hover:border-red-500/40 transition-colors"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-lg bg-red-950/40 border border-red-500/30 text-red-400 flex items-center justify-center shrink-0">
-                            <ShieldAlert size={20} />
-                          </div>
-                          <div className="min-w-0">
-                            <span className="font-mono font-bold text-white text-sm truncate block">{ban.ip}</span>
-                            <p className="text-[11px] text-panel-muted truncate">
-                              {ban.reason || 'IP Bloqueada'}
-                            </p>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => handleUnbanIp(ban.ip)}
-                          className="px-3 py-1 rounded-lg bg-panel-bg hover:bg-emerald-950/30 border border-panel-border hover:border-emerald-500/40 text-xs text-emerald-400 font-medium transition-colors shrink-0"
+                    {safeBannedIps.map((ban) => {
+                      const ipStr = ban?.ip || '0.0.0.0';
+                      return (
+                        <div
+                          key={ipStr}
+                          className="rounded-xl border border-red-500/20 bg-panel-surface/50 p-4 flex items-center justify-between gap-3 hover:border-red-500/40 transition-colors"
                         >
-                          Desbloquear
-                        </button>
-                      </div>
-                    ))}
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-lg bg-red-950/40 border border-red-500/30 text-red-400 flex items-center justify-center shrink-0">
+                              <ShieldAlert size={20} />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="font-mono font-bold text-white text-sm truncate block">{ipStr}</span>
+                              <p className="text-[11px] text-panel-muted truncate">
+                                {ban?.reason || 'IP Bloqueada'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleUnbanIp(ipStr)}
+                            className="px-3 py-1 rounded-lg bg-panel-bg hover:bg-emerald-950/30 border border-panel-border hover:border-emerald-500/40 text-xs text-emerald-400 font-medium transition-colors shrink-0"
+                          >
+                            Desbloquear
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </>

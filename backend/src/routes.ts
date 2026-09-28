@@ -358,43 +358,6 @@ export function createRoutes(
   });
 
   // ─────────────────────────────────────────────────────────
-  // GET /api/servers/:id/players — Lista de jugadores conectados en vivo
-  // ─────────────────────────────────────────────────────────
-  router.get('/servers/:id/players', async (req: Request, res: Response) => {
-    try {
-      const server = manager.getServer(req.params.id);
-      if (!server) {
-        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
-        return;
-      }
-
-      if (server.status !== 'ONLINE') {
-        res.json({
-          ok: true,
-          data: {
-            online: 0,
-            max: 20,
-            players: [],
-          },
-        });
-        return;
-      }
-
-      const query = await queryMinecraftServer(server.config.port || 25565, server.config.id);
-      res.json({
-        ok: true,
-        data: {
-          online: query.playersOnline,
-          max: query.playersMax,
-          players: query.players,
-        },
-      });
-    } catch (err: any) {
-      res.status(500).json({ ok: false, error: err.message });
-    }
-  });
-
-  // ─────────────────────────────────────────────────────────
   // POST /api/servers/:id/players/:name/action — Acciones rápidas (kick, ban, op, deop)
   // ─────────────────────────────────────────────────────────
   router.post('/servers/:id/players/:name/action', (req: Request, res: Response) => {

@@ -69,7 +69,11 @@ function readJsonFile<T>(filePath: string, defaultValue: T): T {
   }
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(content) as T;
+    const parsed = JSON.parse(content);
+    if (Array.isArray(defaultValue) && !Array.isArray(parsed)) {
+      return defaultValue;
+    }
+    return parsed as T;
   } catch {
     return defaultValue;
   }
