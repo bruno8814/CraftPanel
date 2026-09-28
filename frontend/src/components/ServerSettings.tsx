@@ -27,6 +27,7 @@ import { ServerState } from '../types';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import SafeDeleteServerModal from './SafeDeleteServerModal';
+import ServerBannerEditor from './ServerBannerEditor';
 
 interface Props {
   server: ServerState;
@@ -222,30 +223,21 @@ export default function ServerSettings({ server }: Props) {
       {/* ── MODO VISUAL ── */}
       {mode === 'visual' ? (
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* ── Banner, Icono y MOTD del Servidor ── */}
+          <ServerBannerEditor
+            server={server}
+            motd={getStr('motd', 'A Minecraft Server')}
+            onChangeMotd={(val) => updateProp('motd', val)}
+            maxPlayers={getNum('max-players', 20)}
+          />
+
           {/* Sección 1: General & Conexión */}
           <div className="rounded-xl border border-panel-border bg-panel-surface p-5">
             <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-4">
-              <Shield size={16} className="text-panel-accent" /> General y Conexión
+              <Shield size={16} className="text-panel-accent" /> Conexión y Acceso
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* MOTD */}
-              <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-panel-muted mb-1">
-                  Mensaje del Servidor (MOTD)
-                </label>
-                <input
-                  type="text"
-                  value={getStr('motd', 'Un servidor de Minecraft')}
-                  onChange={(e) => updateProp('motd', e.target.value)}
-                  placeholder="A Minecraft Server"
-                  className="w-full rounded-lg border border-panel-border bg-panel-bg px-3 py-2 text-sm text-white outline-none focus:border-panel-accent/50"
-                />
-                <span className="text-[11px] text-panel-muted mt-1 block">
-                  El texto que verán los jugadores en la lista multijugador.
-                </span>
-              </div>
-
               {/* Puerto */}
               <div>
                 <label className="block text-xs font-medium text-panel-muted mb-1">

@@ -275,6 +275,31 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  /** Obtener URL del icono del servidor */
+  getServerIconUrl: (serverId: string) => `${API_BASE}/servers/${serverId}/icon`,
+
+  /** Subir icono del servidor (server-icon.png 64x64) */
+  uploadServerIcon: async (serverId: string, blob: Blob): Promise<{ message: string }> => {
+    const token = localStorage.getItem('craftpanel_token');
+    const res = await fetch(`${API_BASE}/servers/${serverId}/icon`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'image/png',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: blob,
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Error al subir el icono del servidor');
+    return data;
+  },
+
+  /** Eliminar icono del servidor (server-icon.png) */
+  deleteServerIcon: (serverId: string) =>
+    request<{ message: string }>(`/servers/${serverId}/icon`, {
+      method: 'DELETE',
+    }),
+
   /** Listar archivos en una ruta del servidor */
   listFiles: (serverId: string, path?: string) =>
     request<FileItem[]>(`/servers/${serverId}/files${path ? `?path=${encodeURIComponent(path)}` : ''}`),

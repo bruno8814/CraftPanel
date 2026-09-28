@@ -1141,6 +1141,86 @@ export function createRoutes(
     }
   });
 
+  // ─────────────────────────────────────────────────────────
+  // GET /api/servers/:id/icon — Obtener icono del servidor (server-icon.png)
+  // ─────────────────────────────────────────────────────────
+  router.get('/servers/:id/icon', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+
+      const iconPath = path.join(server.config.directory, 'server-icon.png');
+      if (!fs.existsSync(iconPath)) {
+        res.status(404).json({ ok: false, error: 'No se ha encontrado server-icon.png.' });
+        return;
+      }
+
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader('Content-Type', 'image/png');
+      res.sendFile(iconPath);
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // POST /api/servers/:id/icon — Subir icono del servidor (server-icon.png)
+  // ─────────────────────────────────────────────────────────
+  router.post('/servers/:id/icon', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+
+      if (!fs.existsSync(server.config.directory)) {
+        fs.mkdirSync(server.config.directory, { recursive: true });
+      }
+
+      const iconPath = path.join(server.config.directory, 'server-icon.png');
+      const writeStream = fs.createWriteStream(iconPath);
+      req.pipe(writeStream);
+
+      writeStream.on('finish', () => {
+        res.status(200).json({ ok: true, message: 'Icono del servidor actualizado correctamente.' });
+      });
+
+      writeStream.on('error', (err) => {
+        res.status(500).json({ ok: false, error: `Error al guardar el icono: ${err.message}` });
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // DELETE /api/servers/:id/icon — Eliminar icono del servidor
+  // ─────────────────────────────────────────────────────────
+  router.delete('/servers/:id/icon', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+
+      const iconPath = path.join(server.config.directory, 'server-icon.png');
+      if (fs.existsSync(iconPath)) {
+        fs.unlinkSync(iconPath);
+      }
+
+      res.json({ ok: true, message: 'Icono del servidor eliminado correctamente.' });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   // ═════════════════════════════════════════════════════════
   // ENDPOINTS DEL EXPLORADOR DE ARCHIVOS (Fase 5)
   // ═════════════════════════════════════════════════════════
