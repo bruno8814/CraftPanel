@@ -47,11 +47,12 @@ import Modpacks from '../components/Modpacks';
 import { Schedules } from '../components/Schedules';
 import { AlertsSettings } from '../components/AlertsSettings';
 import CrashAndLogsViewer from '../components/CrashAndLogsViewer';
+import PlayersManager from '../components/PlayersManager';
 import SafeDeleteServerModal from '../components/SafeDeleteServerModal';
 import { useAuth } from '../context/AuthContext';
 
 /** Secciones disponibles en la sidebar */
-type Section = 'console' | 'logs' | 'metrics' | 'mods' | 'plugins' | 'modpacks' | 'files' | 'settings' | 'schedules' | 'backups' | 'alerts';
+type Section = 'console' | 'players' | 'logs' | 'metrics' | 'mods' | 'plugins' | 'modpacks' | 'files' | 'settings' | 'schedules' | 'backups' | 'alerts';
 
 interface SidebarItem {
   id: Section;
@@ -63,6 +64,7 @@ interface SidebarItem {
 
 const sidebarItems: SidebarItem[] = [
   { id: 'console',   label: 'Consola',          icon: <Terminal size={18} /> },
+  { id: 'players',   label: 'Jugadores',        icon: <Users size={18} /> },
   { id: 'logs',      label: 'Logs & Crashes',   icon: <Stethoscope size={18} /> },
   { id: 'metrics',   label: 'Rendimiento',      icon: <Activity size={18} /> },
   { id: 'mods',      label: 'Mods',             icon: <Puzzle size={18} />,  showFor: ['fabric', 'forge', 'mohist', 'neoforge'] },
@@ -367,13 +369,17 @@ export default function ServerPage() {
                 <span className="font-semibold text-white">{(liveStats?.tps ?? 20.0).toFixed(1)}</span>
               </div>
               {/* Jugadores */}
-              <div className="flex items-center gap-1.5 text-gray-300 font-mono">
+              <button
+                onClick={() => setSection('players')}
+                className="flex items-center gap-1.5 text-gray-300 font-mono hover:text-amber-300 transition-colors cursor-pointer"
+                title="Abrir gestor de jugadores"
+              >
                 <Users size={14} className="text-amber-400" />
                 <span className="text-gray-400">Jugadores:</span>
                 <span className="font-semibold text-white">
                   {liveStats?.playersOnline ?? 0} / {liveStats?.playersMax ?? 20}
                 </span>
-              </div>
+              </button>
               {/* Uptime */}
               <div className="flex items-center gap-1.5 text-gray-300 font-mono">
                 <Clock size={14} className="text-gray-400" />
@@ -399,6 +405,10 @@ export default function ServerPage() {
             initialBuffer={server.consoleBuffer}
             onNavigateToLogs={() => setSection('logs')}
           />
+        )}
+
+        {section === 'players' && (
+          <PlayersManager server={server} />
         )}
 
         {section === 'logs' && (

@@ -37,6 +37,11 @@ import {
   CrashReportItem,
   CrashAnalysis,
   ParsedLogLine,
+  OpPlayer,
+  WhitelistPlayer,
+  BannedPlayer,
+  BannedIp,
+  ServerPlayersData,
 } from '../types';
 
 
@@ -433,10 +438,6 @@ export const api = {
   getServerStats: (id: string) =>
     request<ServerStats>(`/servers/${id}/stats`),
 
-  /** Obtener jugadores conectados en vivo */
-  getServerPlayers: (id: string) =>
-    request<{ online: number; max: number; players: ConnectedPlayer[] }>(`/servers/${id}/players`),
-
   /** Ejecutar acción administrativa sobre un jugador (kick, ban, op, deop) */
   playerAction: (id: string, name: string, action: 'kick' | 'ban' | 'op' | 'deop', reason?: string) =>
     request<{ message: string }>(`/servers/${id}/players/${encodeURIComponent(name)}/action`, {
@@ -587,6 +588,103 @@ export const api = {
 
   /** Obtener la URL directa de descarga de latest.log */
   getRawLogUrl: (serverId: string) => `${API_BASE}/servers/${serverId}/logs/raw`,
+
+  // ── Opción 2: Gestor Visual de Jugadores ─────────────────────
+
+  /** Obtener datos completos de jugadores (conectados, ops, whitelist, bans) */
+  getServerPlayers: (serverId: string) =>
+    request<ServerPlayersData>(`/servers/${serverId}/players`),
+
+  /** Añadir o actualizar un operador */
+  addOpPlayer: (serverId: string, name: string, level: number = 4) =>
+    request<{ message: string }>(`/servers/${serverId}/players/op`, {
+      method: 'POST',
+      body: JSON.stringify({ name, level }),
+    }),
+
+  /** Revocar permisos de operador */
+  removeOpPlayer: (serverId: string, name: string) =>
+    request<{ message: string }>(`/servers/${serverId}/players/op/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    }),
+
+  /** Añadir jugador a la lista blanca */
+  addWhitelistPlayer: (serverId: string, name: string) =>
+    request<{ message: string }>(`/servers/${serverId}/players/whitelist`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+
+  /** Eliminar jugador de la lista blanca */
+  removeWhitelistPlayer: (serverId: string, name: string) =>
+    request<{ message: string }>(`/servers/${serverId}/players/whitelist/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    }),
+
+  /** Alternar estado de la lista blanca (on / off) */
+  toggleWhitelist: (serverId: string, enabled?: boolean) =>
+    request<{ whitelistEnabled: boolean }>(`/servers/${serverId}/players/whitelist/toggle`, {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    }),
+
+  /** Banear jugador */
+  banPlayer: (serverId: string, name: string, reason?: string) =>
+    request<{ message: string }>(`/servers/${serverId}/players/ban`, {
+      method: 'POST',
+      body: JSON.stringify({ name, reason }),
+    }),
+
+  /** Desbanear jugador */
+  unbanPlayer: (serverId: string, name: string) =>
+    request<{ message: string }>(`/servers/${serverId}/players/ban/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    }),
+
+  /** Banear dirección IP */
+  banIp: (serverId: string, ip: string, reason?: string) =>
+    request<{ message: string }>(`/servers/${serverId}/players/ban-ip`, {
+      method: 'POST',
+      body: JSON.stringify({ ip, reason }),
+    }),
+
+  /** Desbanear dirección IP */
+  unbanIp: (serverId: string, ip: string) =>
+    request<{ message: string }>(`/servers/${serverId}/players/ban-ip/${encodeURIComponent(ip)}`, {
+      method: 'DELETE',
+    }),
+
+  /** Expulsar jugador conectado */
+  kickPlayer: (serverId: string, name: string, reason?: string) =>
+    request<{ message: string }>(`/servers/${serverId}/players/kick`, {
+      method: 'POST',
+      body: JSON.stringify({ name, reason }),
+    }),
+
+  /** Cambiar modo de juego de un jugador */
+  setPlayerGamemode: (
+    serverId: string,
+    name: string,
+    gamemode: 'survival' | 'creative' | 'adventure' | 'spectator'
+  ) =>
+    request<{ message: string }>(`/servers/${serverId}/players/gamemode`, {
+      method: 'POST',
+      body: JSON.stringify({ name, gamemode }),
+    }),
+
+  /** Teletransportar jugador al spawn */
+  teleportPlayerToSpawn: (serverId: string, name: string) =>
+    request<{ message: string }>(`/servers/${serverId}/players/teleport-spawn`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+
+  /** Enviar mensaje privado (whisper) a un jugador */
+  whisperPlayer: (serverId: string, name: string, message: string) =>
+    request<{ message: string }>(`/servers/${serverId}/players/message`, {
+      method: 'POST',
+      body: JSON.stringify({ name, message }),
+    }),
 };
 
 // ── Cliente WebSocket (Socket.io) ───────────────────────────

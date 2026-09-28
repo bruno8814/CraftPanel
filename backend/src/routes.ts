@@ -80,6 +80,21 @@ import {
   analyzeLatestCrash,
   parseLogFile,
 } from './crash-analyzer';
+import {
+  getServerPlayers,
+  addOpPlayer,
+  removeOpPlayer,
+  addWhitelistPlayer,
+  removeWhitelistPlayer,
+  banPlayer,
+  unbanPlayer,
+  banIp,
+  unbanIp,
+  kickPlayer,
+  setPlayerGamemode,
+  teleportPlayerToSpawn,
+  sendWhisperToPlayer,
+} from './player-manager';
 
 /**
  * Crea y devuelve un Router de Express con todas las rutas de la API.
@@ -760,6 +775,279 @@ export function createRoutes(
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${server.config.name}-latest.log"`);
       res.sendFile(logPath);
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ═════════════════════════════════════════════════════════
+  // ENDPOINTS DEL GESTOR DE JUGADORES (Opción 2)
+  // ═════════════════════════════════════════════════════════
+
+  // GET /api/servers/:id/players — Obtener jugadores conectados, ops, whitelist y baneos
+  router.get('/servers/:id/players', async (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const data = await getServerPlayers(
+        server.config.directory,
+        server.config.id,
+        server.status === 'ONLINE' ? server.config.port : undefined
+      );
+      res.json({ ok: true, data });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // POST /api/servers/:id/players/op — Añadir operador
+  router.post('/servers/:id/players/op', async (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const { name, level } = req.body;
+      if (!name) {
+        res.status(400).json({ ok: false, error: 'El nombre de jugador es obligatorio.' });
+        return;
+      }
+      await addOpPlayer(server, name, typeof level === 'number' ? level : 4, manager);
+      res.json({ ok: true, message: `Jugador ${name} configurado como operador.` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // DELETE /api/servers/:id/players/op/:name — Quitar operador
+  router.delete('/servers/:id/players/op/:name', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      removeOpPlayer(server, req.params.name, manager);
+      res.json({ ok: true, message: `Operador ${req.params.name} revocado.` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // POST /api/servers/:id/players/whitelist — Añadir a whitelist
+  router.post('/servers/:id/players/whitelist', async (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const { name } = req.body;
+      if (!name) {
+        res.status(400).json({ ok: false, error: 'El nombre de jugador es obligatorio.' });
+        return;
+      }
+      await addWhitelistPlayer(server, name, manager);
+      res.json({ ok: true, message: `Jugador ${name} añadido a la lista blanca.` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // DELETE /api/servers/:id/players/whitelist/:name — Quitar de whitelist
+  router.delete('/servers/:id/players/whitelist/:name', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      removeWhitelistPlayer(server, req.params.name, manager);
+      res.json({ ok: true, message: `Jugador ${req.params.name} eliminado de la lista blanca.` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // POST /api/servers/:id/players/whitelist/toggle — Alternar whitelist on/off
+  router.post('/servers/:id/players/whitelist/toggle', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const props = readServerProperties(server.config.directory).properties;
+      const current = (props['white-list'] || 'false').toLowerCase() === 'true';
+      const target = typeof req.body.enabled === 'boolean' ? req.body.enabled : !current;
+
+      props['white-list'] = String(target);
+      saveServerProperties(server.config.directory, props);
+
+      if (server.status === 'ONLINE') {
+        manager.sendCommand(server.config.id, `whitelist ${target ? 'on' : 'off'}`);
+        manager.sendCommand(server.config.id, 'whitelist reload');
+      }
+
+      res.json({
+        ok: true,
+        data: { whitelistEnabled: target },
+        message: `Lista blanca ${target ? 'activada' : 'desactivada'}.`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // POST /api/servers/:id/players/ban — Banear jugador
+  router.post('/servers/:id/players/ban', async (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const { name, reason } = req.body;
+      if (!name) {
+        res.status(400).json({ ok: false, error: 'El nombre de jugador es obligatorio.' });
+        return;
+      }
+      await banPlayer(server, name, reason, manager);
+      res.json({ ok: true, message: `Jugador ${name} baneado.` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // DELETE /api/servers/:id/players/ban/:name — Desbanear jugador
+  router.delete('/servers/:id/players/ban/:name', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      unbanPlayer(server, req.params.name, manager);
+      res.json({ ok: true, message: `Jugador ${req.params.name} desbaneado.` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // POST /api/servers/:id/players/ban-ip — Banear IP
+  router.post('/servers/:id/players/ban-ip', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const { ip, reason } = req.body;
+      if (!ip) {
+        res.status(400).json({ ok: false, error: 'La dirección IP es obligatoria.' });
+        return;
+      }
+      banIp(server, ip, reason, manager);
+      res.json({ ok: true, message: `IP ${ip} baneada.` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // DELETE /api/servers/:id/players/ban-ip/:ip — Desbanear IP
+  router.delete('/servers/:id/players/ban-ip/:ip', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      unbanIp(server, req.params.ip, manager);
+      res.json({ ok: true, message: `IP ${req.params.ip} desbaneada.` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // POST /api/servers/:id/players/kick — Expulsar jugador conectado
+  router.post('/servers/:id/players/kick', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const { name, reason } = req.body;
+      if (!name) {
+        res.status(400).json({ ok: false, error: 'El nombre de jugador es obligatorio.' });
+        return;
+      }
+      kickPlayer(server, name, reason, manager);
+      res.json({ ok: true, message: `Jugador ${name} expulsado.` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // POST /api/servers/:id/players/gamemode — Cambiar modo de juego
+  router.post('/servers/:id/players/gamemode', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const { name, gamemode } = req.body;
+      if (!name || !gamemode) {
+        res.status(400).json({ ok: false, error: 'Nombre y modo de juego requeridos.' });
+        return;
+      }
+      setPlayerGamemode(server, name, gamemode, manager);
+      res.json({ ok: true, message: `Modo de ${name} cambiado a ${gamemode}.` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // POST /api/servers/:id/players/teleport-spawn — Teletransportar al spawn
+  router.post('/servers/:id/players/teleport-spawn', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const { name } = req.body;
+      if (!name) {
+        res.status(400).json({ ok: false, error: 'El nombre de jugador es obligatorio.' });
+        return;
+      }
+      teleportPlayerToSpawn(server, name, manager);
+      res.json({ ok: true, message: `Jugador ${name} teletransportado al spawn.` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // POST /api/servers/:id/players/message — Susurrar mensaje directo
+  router.post('/servers/:id/players/message', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const { name, message } = req.body;
+      if (!name || !message) {
+        res.status(400).json({ ok: false, error: 'Nombre y mensaje requeridos.' });
+        return;
+      }
+      sendWhisperToPlayer(server, name, message, manager);
+      res.json({ ok: true, message: `Mensaje enviado a ${name}.` });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err.message });
     }

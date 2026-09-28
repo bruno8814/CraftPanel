@@ -343,5 +343,54 @@ export interface ParsedLogLine {
   raw: string;
 }
 
+// ── Opción 2: Gestor Visual de Jugadores ─────────────────────
+
+export interface ConnectedPlayer {
+  name: string;
+  uuid?: string;
+  avatarUrl: string;
+  joinedAt?: string;
+  pingMs?: number;
+}
+
+export interface OpPlayer {
+  uuid: string;
+  name: string;
+  level: number;
+  bypassesPlayerLimit?: boolean;
+}
+
+export interface WhitelistPlayer {
+  uuid: string;
+  name: string;
+}
+
+export interface BannedPlayer {
+  uuid: string;
+  name: string;
+  created?: string;
+  source?: string;
+  expires?: string;
+  reason?: string;
+}
+
+export interface BannedIp {
+  ip: string;
+  created?: string;
+  source?: string;
+  expires?: string;
+  reason?: string;
+}
+
+export interface ServerPlayersData {
+  onlinePlayers: ConnectedPlayer[];
+  ops: OpPlayer[];
+  whitelist: WhitelistPlayer[];
+  bannedPlayers: BannedPlayer[];
+  bannedIps: BannedIp[];
+  whitelistEnabled: boolean;
+}
+
+
 
 
