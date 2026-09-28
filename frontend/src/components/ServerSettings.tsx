@@ -40,6 +40,7 @@ export default function ServerSettings({ server }: Props) {
   const [saving, setSaving] = useState(false);
   const [properties, setProperties] = useState<Record<string, string>>({});
   const [rawContent, setRawContent] = useState('');
+  const [hasChanges, setHasChanges] = useState(false);
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
