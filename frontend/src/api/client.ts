@@ -17,6 +17,7 @@ import {
   InstalledAddon,
   ModrinthSearchResponse,
   ModrinthVersion,
+  InstalledModpackInfo,
   ServerPropertiesData,
   FileItem,
   UserPublic,
@@ -215,6 +216,46 @@ export const api = {
       `/servers/${serverId}/addons/${type}/${encodeURIComponent(filename)}/toggle`,
       { method: 'POST' }
     ),
+
+  // ── Modpacks (.mrpack) ─────────────────────────────────
+
+  /** Obtener el modpack actualmente instalado en el servidor */
+  getInstalledModpack: (serverId: string) =>
+    request<InstalledModpackInfo | null>(`/servers/${serverId}/modpacks/installed`),
+
+  /** Instalar un modpack desde una URL de Modrinth (.mrpack) */
+  installModpack: (
+    serverId: string,
+    data: { downloadUrl: string; name?: string; version?: string; iconUrl?: string; summary?: string }
+  ) =>
+    request<{ name: string; filesInstalled: number }>(`/servers/${serverId}/modpacks/install`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /** Subir e instalar un archivo .mrpack directamente */
+  uploadModpack: async (serverId: string, file: File): Promise<{ name: string; filesInstalled: number }> => {
+    const token = localStorage.getItem('craftpanel_token');
+    const res = await fetch(
+      `${API_BASE}/servers/${serverId}/modpacks/upload?filename=${encodeURIComponent(file.name)}`,
+      {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: file,
+      }
+    );
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Error al subir el modpack');
+    return data.data;
+  },
+
+  /** Desinstalar / eliminar el registro del modpack */
+  uninstallModpack: (serverId: string) =>
+    request<{ message: string }>(`/servers/${serverId}/modpacks`, {
+      method: 'DELETE',
+    }),
 
   // ── Fase 5: Ajustes (server.properties) y Archivos ───
 

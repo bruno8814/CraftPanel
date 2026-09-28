@@ -41,6 +41,7 @@ import ServerSettings from '../components/ServerSettings';
 import FileManager from '../components/FileManager';
 import ServerMetrics from '../components/ServerMetrics';
 import Backups from '../components/Backups';
+import Modpacks from '../components/Modpacks';
 import { Schedules } from '../components/Schedules';
 import { AlertsSettings } from '../components/AlertsSettings';
 import { useAuth } from '../context/AuthContext';
@@ -392,10 +393,7 @@ export default function ServerPage() {
         )}
 
         {section === 'modpacks' && (
-          <PlaceholderSection
-            title="📦 Modpacks"
-            description="Aquí podrás buscar e instalar modpacks completos. (Fase 4)"
-          />
+          <Modpacks server={server} onRefresh={fetchServer} />
         )}
 
         {section === 'files' && (

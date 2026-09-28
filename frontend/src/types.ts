@@ -89,6 +89,16 @@ export interface ModrinthVersion {
   files: ModrinthVersionFile[];
 }
 
+export interface InstalledModpackInfo {
+  id: string;
+  name: string;
+  version: string;
+  installedAt: string;
+  filesCount: number;
+  summary?: string;
+  iconUrl?: string;
+}
+
 // ── Fase 5: Ajustes y Archivos ───────────────────────────────
 
 export interface ServerPropertiesData {

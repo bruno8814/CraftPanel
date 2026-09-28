@@ -30,6 +30,12 @@ import { searchModrinth, getProjectVersions, getProjectDetails } from './worksho
 import { readServerProperties, saveServerProperties, saveRawServerProperties } from './properties';
 import { listFiles, getFileContent, saveFileContent, createEntry, deleteEntry, renameEntry, safePath } from './file-manager';
 import {
+  getInstalledModpack,
+  installModpackFromUrl,
+  installModpackFromBuffer,
+  uninstallModpack,
+} from './modpack-manager';
+import {
   getSystemMetrics,
   getProcessMetrics,
   getServerMetricHistory,
@@ -952,6 +958,109 @@ export function createRoutes(
       res.json({ ok: true, data: result });
     } catch (err: any) {
       res.status(400).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // GET /api/servers/:id/modpacks/installed — Información del modpack instalado
+  // ─────────────────────────────────────────────────────────
+  router.get('/servers/:id/modpacks/installed', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const info = getInstalledModpack(server.config.directory);
+      res.json({ ok: true, data: info });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // POST /api/servers/:id/modpacks/install — Instalar modpack desde URL (.mrpack)
+  // ─────────────────────────────────────────────────────────
+  router.post('/servers/:id/modpacks/install', async (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const { downloadUrl, name, version, iconUrl, summary } = req.body;
+      if (!downloadUrl) {
+        res.status(400).json({ ok: false, error: 'downloadUrl es obligatoria.' });
+        return;
+      }
+
+      const result = await installModpackFromUrl(
+        server.config.directory,
+        downloadUrl,
+        { name, version, iconUrl, summary }
+      );
+
+      res.json({
+        ok: true,
+        message: `¡Modpack "${result.name}" instalado con éxito! (${result.filesInstalled} archivos procesados).`,
+        data: result,
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // POST /api/servers/:id/modpacks/upload — Subir e instalar .mrpack directamente
+  // ─────────────────────────────────────────────────────────
+  router.post('/servers/:id/modpacks/upload', async (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+
+      const chunks: Buffer[] = [];
+      req.on('data', (c) => chunks.push(c));
+      req.on('end', async () => {
+        try {
+          const buffer = Buffer.concat(chunks);
+          const filename = (req.query.filename as string) || 'modpack.mrpack';
+          const result = await installModpackFromBuffer(server.config.directory, buffer, {
+            name: filename.replace(/\.mrpack$/i, ''),
+          });
+          res.status(201).json({
+            ok: true,
+            message: `¡Modpack "${result.name}" instalado con éxito! (${result.filesInstalled} archivos procesados).`,
+            data: result,
+          });
+        } catch (innerErr: any) {
+          res.status(500).json({ ok: false, error: innerErr.message });
+        }
+      });
+      req.on('error', (err) => {
+        res.status(500).json({ ok: false, error: `Error en la subida: ${err.message}` });
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // DELETE /api/servers/:id/modpacks — Desinstalar registro de modpack
+  // ─────────────────────────────────────────────────────────
+  router.delete('/servers/:id/modpacks', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      uninstallModpack(server.config.directory);
+      res.json({ ok: true, message: 'Registro de modpack eliminado correctamente.' });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
     }
   });
 
