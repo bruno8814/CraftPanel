@@ -111,6 +111,18 @@ const lastLogByServer = new Map<string, string>();
 // Cuando un servidor emite un log, lo enviamos a Socket.io
 manager.onLog = (serverId: string, line: string) => {
   lastLogByServer.set(serverId, line);
+
+  // Detectar si el servidor anuncia en sus logs que se está apagando limpiamente (ej. /stop in-game)
+  const lower = line.toLowerCase();
+  if (
+    lower.includes('stopping the server') ||
+    lower.includes('stopping server') ||
+    lower.includes('all dimensions are saved') ||
+    lower.includes('closing server')
+  ) {
+    watchdog.markIntentionalStop(serverId);
+  }
+
   io.emit('server:log', {
     serverId,
     line,

@@ -328,10 +328,18 @@ export class ProcessManager extends EventEmitter {
     // ── Detección de parada ──
     // Cuando el servidor se está cerrando, imprime "Stopping server"
     if (
-      this._status === 'ONLINE' &&
-      line.includes('Stopping the server') ||
-      line.includes('Stopping server')
+      (this._status === 'ONLINE' || this._status === 'STARTING') &&
+      (line.includes('Stopping the server') || line.includes('Stopping server'))
     ) {
+      this.setStatus('STOPPING');
+    }
+  }
+
+  /**
+   * Permite marcar el estado como STOPPING desde fuera (ej. cuando se envía "stop")
+   */
+  public markStopping(): void {
+    if (this._status !== 'STOPPING' && this._status !== 'OFFLINE') {
       this.setStatus('STOPPING');
     }
   }

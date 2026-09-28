@@ -129,10 +129,10 @@ export class CrashWatchdog {
    */
   markIntentionalStop(serverId: string): void {
     this.intentionalStops.add(serverId);
-    // Limpiar tras 30 segundos
+    // Limpiar tras 3 minutos (tiempo de sobra incluso para modpacks pesados que guardan mundos gigantes)
     setTimeout(() => {
       this.intentionalStops.delete(serverId);
-    }, 30000);
+    }, 180000);
   }
 
   // ─── Manejador de Salida del Proceso ────────────────────────
@@ -152,10 +152,32 @@ export class CrashWatchdog {
     const wasIntentional = this.intentionalStops.has(serverId);
     this.intentionalStops.delete(serverId);
 
-    // Si fue una parada normal iniciada por el usuario o scheduler con /stop (código 0 y manual), no es crash
-    if (wasIntentional && code === 0) {
-      console.log(`[Watchdog] Servidor ${server.config.name} se detuvo de forma ordenada.`);
+    // 1. Si la parada fue iniciada intencionadamente por el usuario, consola o scheduler, NUNCA es un crash
+    if (wasIntentional) {
+      console.log(`[Watchdog] Servidor "${server.config.name}" se detuvo de forma ordenada (parada intencionada).`);
       return;
+    }
+
+    // 2. Si el proceso Java terminó con código 0 (cierre limpio sin errores), NUNCA es un crash
+    if (code === 0) {
+      console.log(`[Watchdog] Servidor "${server.config.name}" terminó limpiamente con código 0.`);
+      return;
+    }
+
+    // 3. Comprobar si los últimos registros indican un apagado ordenado de Minecraft (ej. comando /stop)
+    if (lastLogLine) {
+      const lower = lastLogLine.toLowerCase();
+      if (
+        lower.includes('stopping the server') ||
+        lower.includes('stopping server') ||
+        lower.includes('saving worlds') ||
+        lower.includes('all dimensions are saved') ||
+        lower.includes('closing server') ||
+        lower.includes('threadedsessionlock: all dimensions are saved')
+      ) {
+        console.log(`[Watchdog] Servidor "${server.config.name}" se detuvo de forma ordenada según el log de Minecraft.`);
+        return;
+      }
     }
 
     // ── Es una caída inesperada (Crash) ──

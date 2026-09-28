@@ -305,6 +305,14 @@ export class ServerManager {
   sendCommand(id: string, command: string): void {
     const pm = this.processes.get(id);
     if (!pm) throw new Error(`Servidor no encontrado: ${id}`);
+
+    const cmd = command.trim().toLowerCase();
+    if (cmd === 'stop' || cmd === '/stop' || cmd.startsWith('stop ') || cmd.startsWith('/stop ')) {
+      console.log(`[ServerManager] Comando "stop" detectado en consola para "${id}". Marcando parada intencionada.`);
+      this.onStopInitiated?.(id);
+      pm.markStopping();
+    }
+
     pm.sendCommand(command);
   }
 
