@@ -321,12 +321,15 @@ export class ServerManager {
       throw new Error('No puedes eliminar un servidor que está corriendo. Páralo primero.');
     }
 
-    // Eliminar la carpeta del disco
-    fs.rmSync(config.directory, { recursive: true, force: true });
+    // Eliminar la carpeta del disco si existe
+    if (fs.existsSync(config.directory)) {
+      fs.rmSync(config.directory, { recursive: true, force: true });
+    }
 
     // Eliminar de memoria
     this.configs.delete(id);
     this.processes.delete(id);
+    this.startedTimes.delete(id);
 
     console.log(`[ServerManager] Servidor eliminado: "${config.name}" (${id})`);
   }

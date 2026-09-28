@@ -50,6 +50,7 @@ import {
   toggleLockBackup,
   getSafeBackupFilePath,
   saveUploadedBackup,
+  getServerBackupsDir,
 } from './backup-manager';
 import {
   isSystemInitialized,
@@ -214,8 +215,34 @@ export function createRoutes(
   // ─────────────────────────────────────────────────────────
   router.delete('/servers/:id', (req: Request, res: Response) => {
     try {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.slice(7);
+        const userId = verifyToken(token);
+        if (userId) {
+          const user = getUserById(userId);
+          if (user && !user.isOwner && !user.permissions.includes('servers:delete')) {
+            res.status(403).json({ ok: false, error: 'No tienes permisos para eliminar servidores.' });
+            return;
+          }
+        }
+      }
+
+      const deleteBackups = req.query.deleteBackups === 'true';
       manager.deleteServer(req.params.id);
-      res.json({ ok: true, message: 'Servidor eliminado.' });
+
+      if (deleteBackups) {
+        try {
+          const backupsDir = getServerBackupsDir(req.params.id);
+          if (fs.existsSync(backupsDir)) {
+            fs.rmSync(backupsDir, { recursive: true, force: true });
+          }
+        } catch (backupErr) {
+          console.warn(`[ServerManager] No se pudieron eliminar los backups del servidor ${req.params.id}:`, backupErr);
+        }
+      }
+
+      res.json({ ok: true, message: 'Servidor eliminado correctamente.' });
     } catch (err: any) {
       res.status(400).json({ ok: false, error: err.message });
     }

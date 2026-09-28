@@ -110,8 +110,10 @@ export const api = {
     }),
 
   /** Eliminar un servidor */
-  deleteServer: (id: string) =>
-    request<void>(`/servers/${id}`, { method: 'DELETE' }),
+  deleteServer: (id: string, options?: { deleteBackups?: boolean }) => {
+    const query = options?.deleteBackups ? '?deleteBackups=true' : '';
+    return request<void>(`/servers/${id}${query}`, { method: 'DELETE' });
+  },
 
   // ── Fase 3: Software y Versiones ──────────────────────
 

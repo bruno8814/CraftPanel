@@ -31,6 +31,7 @@ import {
   Users,
   Cpu,
   Bell,
+  Trash2,
 } from 'lucide-react';
 import { ServerState, ServerStats } from '../types';
 import { api, getSocket } from '../api/client';
@@ -44,6 +45,7 @@ import Backups from '../components/Backups';
 import Modpacks from '../components/Modpacks';
 import { Schedules } from '../components/Schedules';
 import { AlertsSettings } from '../components/AlertsSettings';
+import SafeDeleteServerModal from '../components/SafeDeleteServerModal';
 import { useAuth } from '../context/AuthContext';
 
 /** Secciones disponibles en la sidebar */
@@ -81,6 +83,7 @@ export default function ServerPage() {
   const [section, setSection] = useState<Section>('console');
   const [actionLoading, setActionLoading] = useState(false);
   const [downloadingJar, setDownloadingJar] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   // ── Formatear segundos de uptime ──
   const formatUptime = (seconds: number) => {
@@ -290,6 +293,19 @@ export default function ServerPage() {
           )}
         </div>
         )}
+
+        {/* Borrado seguro de servidor */}
+        {hasPermission('servers:delete') && (
+          <div className="border-t border-panel-border p-3 pt-2 mt-auto">
+            <button
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-500/20 bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-900/30 hover:text-red-300 hover:border-red-500/40 transition-colors"
+            >
+              <Trash2 size={13} />
+              Eliminar servidor
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* ══════════════════════════════════════════════ */}
@@ -426,6 +442,16 @@ export default function ServerPage() {
           </div>
         )}
       </div>
+
+      {/* Modal de Borrado Seguro */}
+      <SafeDeleteServerModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        server={server}
+        onDeleted={() => {
+          navigate('/');
+        }}
+      />
     </div>
   );
 }

@@ -7,6 +7,7 @@
 // ============================================================
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Save,
   RotateCcw,
@@ -19,9 +20,13 @@ import {
   Check,
   AlertCircle,
   RefreshCw,
+  AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 import { ServerState } from '../types';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import SafeDeleteServerModal from './SafeDeleteServerModal';
 
 interface Props {
   server: ServerState;
@@ -35,7 +40,9 @@ export default function ServerSettings({ server }: Props) {
   const [saving, setSaving] = useState(false);
   const [properties, setProperties] = useState<Record<string, string>>({});
   const [rawContent, setRawContent] = useState('');
-  const [hasChanges, setHasChanges] = useState(false);
+  const navigate = useNavigate();
+  const { hasPermission } = useAuth();
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const showNotification = (type: 'success' | 'error', text: string) => {
@@ -543,6 +550,32 @@ export default function ServerSettings({ server }: Props) {
               </div>
             </div>
           </div>
+
+          {/* ── ZONA DE PELIGRO: BORRADO SEGURO ── */}
+          {hasPermission('servers:delete') && (
+            <div className="rounded-xl border border-red-500/30 bg-red-950/10 p-5 mt-6 space-y-4">
+              <div className="flex items-center gap-2.5 text-red-400">
+                <AlertTriangle size={20} />
+                <h3 className="font-semibold text-sm">Zona de Peligro</h3>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-red-500/20 pt-4">
+                <div className="space-y-1">
+                  <span className="font-medium text-white text-sm block">Eliminar este servidor</span>
+                  <span className="text-xs text-panel-muted block max-w-xl">
+                    Borra permanentemente la carpeta del servidor, los mundos de Minecraft, los datos de los jugadores, plugins y archivos de configuración. Esta acción no se puede deshacer.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteModalOpen(true)}
+                  className="flex items-center gap-2 rounded-lg bg-red-600/20 border border-red-500/40 px-4 py-2 text-xs font-semibold text-red-300 hover:bg-red-600 hover:text-white transition-all shadow-lg shadow-red-950/50 shrink-0"
+                >
+                  <Trash2 size={14} />
+                  Eliminar servidor...
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         /* ── MODO RAW / TEXTO ── */
@@ -563,6 +596,16 @@ export default function ServerSettings({ server }: Props) {
           />
         </div>
       )}
+
+      {/* Modal de Borrado Seguro */}
+      <SafeDeleteServerModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        server={server}
+        onDeleted={() => {
+          navigate('/');
+        }}
+      />
     </div>
   );
 }

@@ -19,11 +19,13 @@ import {
   ChevronRight,
   Cpu,
   Users,
+  Trash2,
 } from 'lucide-react';
 import { ServerState, ServerStats } from '../types';
 import StatusBadge from './StatusBadge';
 import { api, getSocket } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import SafeDeleteServerModal from './SafeDeleteServerModal';
 
 interface Props {
   server: ServerState;
@@ -46,6 +48,7 @@ export default function ServerCard({ server, onRefresh }: Props) {
   const style = softwareStyles[config.software] ?? softwareStyles.vanilla;
 
   const [liveStats, setLiveStats] = useState<ServerStats | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   useEffect(() => {
     if (status !== 'ONLINE') return;
@@ -96,7 +99,22 @@ export default function ServerCard({ server, onRefresh }: Props) {
             <span className="text-panel-muted">{config.version}</span>
           </p>
         </div>
-        <StatusBadge status={status} />
+        <div className="flex items-center gap-2">
+          <StatusBadge status={status} />
+          {hasPermission('servers:delete') && (
+            <button
+              type="button"
+              title="Eliminar servidor de forma segura"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsDeleteModalOpen(true);
+              }}
+              className="p-1 rounded-md text-panel-muted hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-70 group-hover:opacity-100"
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Detalles: RAM y Puerto + Telemetría en vivo si está ONLINE ── */}
@@ -164,6 +182,14 @@ export default function ServerCard({ server, onRefresh }: Props) {
                      group-hover:text-panel-accent"
         />
       </div>
+
+      {/* Modal de Borrado Seguro */}
+      <SafeDeleteServerModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        server={server}
+        onDeleted={onRefresh}
+      />
     </div>
   );
 }
