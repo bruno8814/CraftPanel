@@ -3,10 +3,11 @@
 // ============================================================
 // NeoForge publica sus artefactos e instaladores en su Maven oficial:
 //   https://maven.neoforged.net/releases/net/neoforged/neoforge/
+//   API: https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge
 //
 // Flujo:
-//   1. Obtener versiones disponibles desde maven-metadata.xml
-//   2. Mapear versión de Minecraft (ej. 1.21.1) a build de NeoForge (ej. 21.1.251)
+//   1. Obtener versiones disponibles (con fallback entre API JSON y XML de Maven)
+//   2. Mapear versión de Minecraft (ej. 1.21.1) a build de NeoForge (ej. 21.1.252)
 //   3. Descargar el installer oficial (neoforge-<build>-installer.jar)
 //   4. Ejecutar "java -jar installer.jar --installServer" en segundo plano
 //   5. Limpiar temporales y dejar listo el servidor para arranque nativo
@@ -18,10 +19,62 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
-const MAVEN_METADATA_URL =
-  'https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml';
-const MAVEN_BASE_DOWNLOAD =
-  'https://maven.neoforged.net/releases/net/neoforged/neoforge';
+// Builds estables de respaldo conocidos si Maven tiene problemas de conexión o bloqueo
+const KNOWN_STABLE_BUILDS: Record<string, { build: string; artifact: string; jarPrefix: string }> = {
+  '1.21.1': { build: '21.1.252', artifact: 'neoforge', jarPrefix: 'neoforge' },
+  '1.21':   { build: '21.0.167', artifact: 'neoforge', jarPrefix: 'neoforge' },
+  '1.20.6': { build: '20.6.119', artifact: 'neoforge', jarPrefix: 'neoforge' },
+  '1.20.4': { build: '20.4.237', artifact: 'neoforge', jarPrefix: 'neoforge' },
+  '1.20.2': { build: '20.2.88',  artifact: 'neoforge', jarPrefix: 'neoforge' },
+  '1.20.1': { build: '1.20.1-47.1.106', artifact: 'forge', jarPrefix: 'forge' },
+};
+
+/**
+ * Consulta las versiones de NeoForge probando múltiples endpoints con headers adecuados
+ */
+async function fetchNeoForgeVersionList(artifact: 'neoforge' | 'forge' = 'neoforge'): Promise<string[]> {
+  const endpoints = [
+    // 1. API oficial JSON de NeoForge
+    `https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/${artifact}`,
+    // 2. Maven metadata XML estándar
+    `https://maven.neoforged.net/releases/net/neoforged/${artifact}/maven-metadata.xml`,
+    // 3. Ruta alternativa sin 'releases'
+    `https://maven.neoforged.net/net/neoforged/${artifact}/maven-metadata.xml`,
+  ];
+
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 CraftPanel/1.0',
+    'Accept': 'application/json, application/xml, text/xml, */*',
+  };
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+      if (!res.ok) continue;
+
+      if (url.includes('/api/')) {
+        const data = await res.json() as { versions?: string[] };
+        if (data && Array.isArray(data.versions) && data.versions.length > 0) {
+          return data.versions;
+        }
+      } else {
+        const xml = await res.text();
+        const matches = [...xml.matchAll(/<version>([^<]+)<\/version>/g)].map((m) => m[1]);
+        if (matches.length > 0) {
+          return matches;
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[NeoForgeDownloader] Aviso al consultar ${url}: ${err.message}`);
+    }
+  }
+
+  // Si todos los endpoints de red fallaron, devolver builds conocidos
+  console.warn(`[NeoForgeDownloader] Usando lista de builds estables de respaldo para ${artifact}`);
+  return Object.values(KNOWN_STABLE_BUILDS)
+    .filter((k) => k.artifact === artifact)
+    .map((k) => k.build);
+}
 
 export class NeoForgeDownloader implements SoftwareDownloader {
   software = 'neoforge' as const;
@@ -32,15 +85,13 @@ export class NeoForgeDownloader implements SoftwareDownloader {
    */
   async getVersions(): Promise<VersionInfo[]> {
     console.log('[NeoForgeDownloader] Obteniendo versiones de NeoForge...');
-    const res = await fetch(MAVEN_METADATA_URL);
-    if (!res.ok) {
-      throw new Error(`Error al consultar Maven de NeoForge: HTTP ${res.status}`);
+    
+    let versionMatches: string[] = [];
+    try {
+      versionMatches = await fetchNeoForgeVersionList('neoforge');
+    } catch {
+      versionMatches = [];
     }
-    const xml = await res.text();
-
-    const versionMatches = [...xml.matchAll(/<version>([^<]+)<\/version>/g)].map(
-      (m) => m[1]
-    );
 
     // Mapeo: versión de Minecraft -> último build
     const mcToLatestBuild = new Map<string, { build: string; stable: boolean }>();
@@ -63,10 +114,17 @@ export class NeoForgeDownloader implements SoftwareDownloader {
         continue;
       }
 
-      // Guardamos el build más reciente (el XML lista en orden cronológico)
       mcToLatestBuild.set(mcVer, {
         build,
         stable: !isBeta,
+      });
+    }
+
+    // Añadir 1.20.1 como versión soportada (NeoForge 1.20.1 legacy)
+    if (!mcToLatestBuild.has('1.20.1')) {
+      mcToLatestBuild.set('1.20.1', {
+        build: KNOWN_STABLE_BUILDS['1.20.1'].build,
+        stable: true,
       });
     }
 
@@ -90,7 +148,6 @@ export class NeoForgeDownloader implements SoftwareDownloader {
       }
     }
 
-    // Añadir cualquier otra versión detectada que no esté en preferredOrder
     for (const [ver, info] of mcToLatestBuild) {
       if (!preferredOrder.includes(ver)) {
         sortedVersions.push({
@@ -107,40 +164,55 @@ export class NeoForgeDownloader implements SoftwareDownloader {
    * Obtiene el build más reciente para una versión de Minecraft.
    */
   async getLatestBuild(version: string): Promise<BuildInfo> {
-    const res = await fetch(MAVEN_METADATA_URL);
-    if (!res.ok) {
-      throw new Error(`Error al consultar Maven de NeoForge: HTTP ${res.status}`);
+    // Si es 1.20.1, NeoForge está bajo el artefacto 'forge'
+    const isLegacy1201 = version === '1.20.1';
+    const artifact = isLegacy1201 ? 'forge' : 'neoforge';
+    const jarPrefix = isLegacy1201 ? 'forge' : 'neoforge';
+
+    // Verificar si tenemos un build conocido directamente
+    const known = KNOWN_STABLE_BUILDS[version];
+
+    let chosenBuild = '';
+    try {
+      const versionMatches = await fetchNeoForgeVersionList(artifact);
+
+      if (isLegacy1201) {
+        const matchingBuilds = versionMatches.filter((v) => v.includes('1.20.1'));
+        if (matchingBuilds.length > 0) {
+          chosenBuild = matchingBuilds[matchingBuilds.length - 1];
+        }
+      } else {
+        const parts = version.split('.');
+        let prefix = '';
+        if (parts[0] === '1') {
+          const maj = parts[1];
+          const min = parts[2] || '0';
+          prefix = `${maj}.${min}.`;
+        }
+
+        const matchingBuilds = versionMatches.filter((v) => v.startsWith(prefix));
+        if (matchingBuilds.length > 0) {
+          const stableBuilds = matchingBuilds.filter((v) => !v.includes('beta') && !v.includes('alpha'));
+          chosenBuild = stableBuilds.length > 0
+            ? stableBuilds[stableBuilds.length - 1]
+            : matchingBuilds[matchingBuilds.length - 1];
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[NeoForgeDownloader] Error buscando build dinámico: ${err.message}`);
     }
-    const xml = await res.text();
-    const versionMatches = [...xml.matchAll(/<version>([^<]+)<\/version>/g)].map(
-      (m) => m[1]
-    );
 
-    // Mapear versión de MC a prefijo de NeoForge (ej: 1.21.1 -> 21.1.; 1.21 -> 21.0.; 1.20.4 -> 20.4.)
-    const parts = version.split('.');
-    let prefix = '';
-    if (parts[0] === '1') {
-      const maj = parts[1]; // '21' o '20'
-      const min = parts[2] || '0'; // '1', '4', o '0'
-      prefix = `${maj}.${min}.`;
+    // Fallback garantizado si la búsqueda en Maven no devolvió coincidencia
+    if (!chosenBuild) {
+      if (known) {
+        chosenBuild = known.build;
+      } else {
+        throw new Error(`No se encontraron builds de NeoForge para Minecraft ${version}`);
+      }
     }
 
-    // Filtrar builds que coincidan con el prefijo
-    const matchingBuilds = versionMatches.filter((v) => v.startsWith(prefix));
-    if (matchingBuilds.length === 0) {
-      throw new Error(
-        `No se encontraron builds de NeoForge para Minecraft ${version}`
-      );
-    }
-
-    // Elegir el último build estable si es posible, o el último en la lista
-    const stableBuilds = matchingBuilds.filter((v) => !v.includes('beta') && !v.includes('alpha'));
-    const chosenBuild = stableBuilds.length > 0
-      ? stableBuilds[stableBuilds.length - 1]
-      : matchingBuilds[matchingBuilds.length - 1];
-
-    const fileName = `neoforge-${chosenBuild}-installer.jar`;
-    const downloadUrl = `${MAVEN_BASE_DOWNLOAD}/${chosenBuild}/${fileName}`;
+    const fileName = `${jarPrefix}-${chosenBuild}-installer.jar`;
+    const downloadUrl = `https://maven.neoforged.net/releases/net/neoforged/${artifact}/${chosenBuild}/${fileName}`;
 
     return {
       fileName,
@@ -157,7 +229,7 @@ export class NeoForgeDownloader implements SoftwareDownloader {
     const installerFile = 'neoforge-installer.jar';
 
     console.log(
-      `[NeoForgeDownloader] Descargando instalador de NeoForge build ${buildInfo.build}...`
+      `[NeoForgeDownloader] Descargando instalador de NeoForge (${buildInfo.build}) desde: ${buildInfo.downloadUrl}`
     );
 
     await downloadFile(
@@ -198,7 +270,7 @@ export class NeoForgeDownloader implements SoftwareDownloader {
       });
     });
 
-    // Limpieza de archivos temporales
+    // Limpieza de archivos temporales del instalador
     try {
       const installerPath = path.join(destDir, installerFile);
       if (fs.existsSync(installerPath)) {
@@ -222,6 +294,6 @@ export class NeoForgeDownloader implements SoftwareDownloader {
     }
 
     console.log(`[NeoForgeDownloader] ¡Servidor NeoForge ${version} instalado con éxito!`);
-    return 'run.bat';
+    return process.platform === 'win32' ? 'run.bat' : 'run.sh';
   }
 }
