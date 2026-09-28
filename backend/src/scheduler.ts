@@ -35,6 +35,23 @@ if (!fs.existsSync(BASE_DATA_DIR)) {
   fs.mkdirSync(BASE_DATA_DIR, { recursive: true });
 }
 
+// ── Helper para normalizar y validar horas ───────────────────
+function normalizeScheduleTimes(timeInput: string): string {
+  const parts = timeInput.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) {
+    throw new Error('Debes especificar al menos una hora válida en formato HH:mm.');
+  }
+
+  for (const part of parts) {
+    if (!part.match(/^([01]\d|2[0-3]):([0-5]\d)$/)) {
+      throw new Error(`La hora "${part}" no es válida. Debe ser formato 24h HH:mm (ej. 05:00 o 18:30).`);
+    }
+  }
+
+  const unique = Array.from(new Set(parts)).sort((a, b) => a.localeCompare(b));
+  return unique.join(', ');
+}
+
 export class ScheduleManager {
   private schedules: Map<string, ScheduleItem> = new Map();
   private timer: NodeJS.Timeout | null = null;
@@ -104,11 +121,7 @@ export class ScheduleManager {
     const server = this.serverManager.getServer(serverId);
     if (!server) throw new Error(`Servidor no encontrado: ${serverId}`);
 
-    // Normalizar formato de hora "HH:mm"
-    const timeMatch = req.time.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
-    if (!timeMatch) {
-      throw new Error('El formato de hora debe ser HH:mm (24 horas, ej. 12:00 o 00:00).');
-    }
+    const normalizedTime = normalizeScheduleTimes(req.time);
 
     const id = uuidv4();
     const item: ScheduleItem = {
@@ -117,7 +130,7 @@ export class ScheduleManager {
       name: req.name.trim(),
       enabled: true,
       action: req.action,
-      time: req.time,
+      time: normalizedTime,
       daysOfWeek: req.daysOfWeek && req.daysOfWeek.length > 0 ? req.daysOfWeek : [0, 1, 2, 3, 4, 5, 6],
       warnings: req.warnings || [],
       command: req.command?.trim(),
@@ -140,11 +153,7 @@ export class ScheduleManager {
     if (!item) throw new Error(`Regla programada no encontrada: ${id}`);
 
     if (req.time) {
-      const timeMatch = req.time.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
-      if (!timeMatch) {
-        throw new Error('El formato de hora debe ser HH:mm (24 horas, ej. 12:00 o 00:00).');
-      }
-      item.time = req.time;
+      item.time = normalizeScheduleTimes(req.time);
     }
 
     if (req.name !== undefined) item.name = req.name.trim();
@@ -253,44 +262,48 @@ export class ScheduleManager {
       if (!item.enabled) continue;
       if (!item.daysOfWeek.includes(currentDay)) continue;
 
-      const [targetH, targetM] = item.time.split(':').map(Number);
-      const targetTotalMinutes = targetH * 60 + targetM;
+      const targetTimes = item.time.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
 
-      // Calcular diferencia en minutos (manejando cambio de día circular 1440 min)
-      const diffMinutes = (targetTotalMinutes - currentTotalMinutes + 1440) % 1440;
+      for (const timeStr of targetTimes) {
+        const [targetH, targetM] = timeStr.split(':').map(Number);
+        const targetTotalMinutes = targetH * 60 + targetM;
 
-      // ── Caso 1: Es el minuto exacto del evento principal (diff == 0) ──
-      if (diffMinutes === 0) {
-        const tickKey = `${item.id}-main-${dateStr}`;
-        if (!this.executedTicks.has(tickKey)) {
-          this.executedTicks.add(tickKey);
-          item.lastRun = now.toISOString();
-          this.saveToDisk();
+        // Calcular diferencia en minutos (manejando cambio de día circular 1440 min)
+        const diffMinutes = (targetTotalMinutes - currentTotalMinutes + 1440) % 1440;
 
-          console.log(`[Scheduler] ⏰ Hora exacta alcanzada (${item.time}): ejecutando "${item.name}"`);
-          this.executeAction(item, false).catch((err) => {
-            console.error(`[Scheduler] Error ejecutando acción de "${item.name}":`, err);
-          });
+        // ── Caso 1: Es el minuto exacto del evento principal (diff == 0) ──
+        if (diffMinutes === 0) {
+          const tickKey = `${item.id}-main-${timeStr}-${dateStr}`;
+          if (!this.executedTicks.has(tickKey)) {
+            this.executedTicks.add(tickKey);
+            item.lastRun = now.toISOString();
+            this.saveToDisk();
+
+            console.log(`[Scheduler] ⏰ Hora alcanzada (${timeStr}): ejecutando "${item.name}"`);
+            this.executeAction(item, false).catch((err) => {
+              console.error(`[Scheduler] Error ejecutando acción de "${item.name}":`, err);
+            });
+          }
+          continue;
         }
-        continue;
-      }
 
-      // ── Caso 2: Avisos de cuenta atrás para SAFE_STOP y SAFE_RESTART ──
-      if (
-        (item.action === 'SAFE_STOP' || item.action === 'SAFE_RESTART') &&
-        item.warnings &&
-        item.warnings.length > 0 &&
-        diffMinutes > 0 &&
-        diffMinutes <= 60
-      ) {
-        // Comprobar si hay un aviso configurado para este diff exacto (ej. 10m, 5m, 1m)
-        const matchingWarning = item.warnings.find((w) => w.minutesBefore === diffMinutes);
-        if (matchingWarning) {
-          const warnKey = `${item.id}-warn-${diffMinutes}-${dateStr}`;
-          if (!this.executedTicks.has(warnKey)) {
-            this.executedTicks.add(warnKey);
-            console.log(`[Scheduler] 📢 Emitiendo aviso de ${diffMinutes} min para "${item.name}"`);
-            this.broadcastWarning(item.serverId, matchingWarning.message);
+        // ── Caso 2: Avisos de cuenta atrás para SAFE_STOP y SAFE_RESTART ──
+        if (
+          (item.action === 'SAFE_STOP' || item.action === 'SAFE_RESTART') &&
+          item.warnings &&
+          item.warnings.length > 0 &&
+          diffMinutes > 0 &&
+          diffMinutes <= 60
+        ) {
+          // Comprobar si hay un aviso configurado para este diff exacto (ej. 10m, 5m, 1m)
+          const matchingWarning = item.warnings.find((w) => w.minutesBefore === diffMinutes);
+          if (matchingWarning) {
+            const warnKey = `${item.id}-warn-${timeStr}-${diffMinutes}-${dateStr}`;
+            if (!this.executedTicks.has(warnKey)) {
+              this.executedTicks.add(warnKey);
+              console.log(`[Scheduler] 📢 Emitiendo aviso de ${diffMinutes} min para "${item.name}" (${timeStr})`);
+              this.broadcastWarning(item.serverId, matchingWarning.message);
+            }
           }
         }
       }
