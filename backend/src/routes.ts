@@ -1567,6 +1567,12 @@ export function createRoutes(
     try {
       console.log('[System] Iniciando actualización automática desde GitHub...');
 
+      // Guardar el commit antes del pull para hacer rollback automático si falla el build
+      let preCommit = '';
+      try {
+        preCommit = execSync('git rev-parse HEAD', { cwd: rootDir, timeout: 10000, stdio: 'pipe' }).toString().trim();
+      } catch {}
+
       // 1. Guardar/descartar cambios locales en archivos rastreados para evitar bloqueos
       try {
         execSync('git stash', { cwd: rootDir, timeout: 15000, stdio: 'ignore' });
@@ -1575,9 +1581,10 @@ export function createRoutes(
       // 2. git pull
       execSync('git pull', { cwd: rootDir, timeout: 60000, stdio: 'pipe' });
 
-      // 3. npm install
-      execSync('npm install --silent', { cwd: rootDir, timeout: 90000, stdio: 'pipe' });
-      execSync('npm install --prefix frontend --silent', { cwd: rootDir, timeout: 90000, stdio: 'pipe' });
+      // 3. npm install (Forzar NODE_ENV=development e --include=dev para que siempre instale typescript y vite)
+      const updateEnv = { ...process.env, NODE_ENV: 'development' };
+      execSync('npm install --include=dev --silent', { cwd: rootDir, timeout: 90000, stdio: 'pipe', env: updateEnv });
+      execSync('npm install --prefix frontend --include=dev --silent', { cwd: rootDir, timeout: 90000, stdio: 'pipe', env: updateEnv });
 
       // Asegurar permisos de ejecución en los binarios para Linux (evita "tsc: Permission denied")
       if (process.platform !== 'win32') {
@@ -1587,7 +1594,18 @@ export function createRoutes(
       }
 
       // 4. npm run build
-      execSync('npm run build', { cwd: rootDir, timeout: 90000, stdio: 'pipe' });
+      try {
+        execSync('npm run build', { cwd: rootDir, timeout: 120000, stdio: 'pipe', env: updateEnv });
+      } catch (buildErr: any) {
+        // Si falla la compilación, revertir el git pull para no dejar el panel en un estado fantasma
+        if (preCommit) {
+          try {
+            execSync(`git reset --hard ${preCommit}`, { cwd: rootDir, timeout: 15000, stdio: 'ignore' });
+            console.warn(`[System] Revertido a commit previo ${preCommit} tras fallo de compilación.`);
+          } catch {}
+        }
+        throw buildErr;
+      }
 
       console.log('[System] ¡Actualización completada con éxito! Reiniciando panel...');
 

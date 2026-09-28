@@ -27,8 +27,8 @@ fi
 
 # 3. Actualizar dependencias si hubo cambios en package.json
 echo "[2/4] Verificando dependencias de Node.js..."
-npm install --silent
-npm install --prefix frontend --silent
+npm install --include=dev --silent
+npm install --prefix frontend --include=dev --silent
 chmod -R +x node_modules/.bin frontend/node_modules/.bin 2>/dev/null || true
 
 # 4. Recompilar frontend y backend

@@ -119,8 +119,8 @@ chmod +x update.sh start.sh 2>/dev/null || true
 
 # 6. Instalar dependencias y compilar
 echo -e "${AZUL}[5/6] Instalando dependencias de Node.js y compilando producción...${NC}"
-npm install --silent
-npm install --prefix frontend --silent
+npm install --include=dev --silent
+npm install --prefix frontend --include=dev --silent
 chmod -R +x node_modules/.bin frontend/node_modules/.bin 2>/dev/null || true
 
 echo -e "${AMARILLO}[INFO] Compilando frontend y backend con TypeScript...${NC}"
