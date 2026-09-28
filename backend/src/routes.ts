@@ -73,6 +73,13 @@ import {
 import { ScheduleManager } from './scheduler';
 import { CrashWatchdog } from './watchdog';
 import { sendTestNotification, sendBackupNotification } from './discord-notifier';
+import {
+  listCrashReports,
+  getCrashReportText,
+  analyzeCrashContent,
+  analyzeLatestCrash,
+  parseLogFile,
+} from './crash-analyzer';
 
 /**
  * Crea y devuelve un Router de Express con todas las rutas de la API.
@@ -655,6 +662,104 @@ export function createRoutes(
       const isPreview = req.query.preview === 'true';
       const result = await scheduler.runScheduleNow(req.params.scheduleId, isPreview);
       res.json({ ok: true, data: result });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ═════════════════════════════════════════════════════════
+  // ENDPOINTS DE ANÁLISIS DE CRASHES Y LOGS (Opción 6)
+  // ═════════════════════════════════════════════════════════
+
+  // ─────────────────────────────────────────────────────────
+  // GET /api/servers/:id/crashes — Listar todos los reportes de caída
+  // ─────────────────────────────────────────────────────────
+  router.get('/servers/:id/crashes', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const crashes = listCrashReports(server.config.directory);
+      res.json({ ok: true, data: crashes });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // GET /api/servers/:id/crashes/latest — Análisis del último crash
+  // ─────────────────────────────────────────────────────────
+  router.get('/servers/:id/crashes/latest', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const analysis = analyzeLatestCrash(server.config.directory);
+      res.json({ ok: true, data: analysis });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // GET /api/servers/:id/crashes/:fileName — Análisis de un reporte específico
+  // ─────────────────────────────────────────────────────────
+  router.get('/servers/:id/crashes/:fileName', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const fileName = req.params.fileName;
+      const text = getCrashReportText(server.config.directory, fileName);
+      const analysis = analyzeCrashContent(text, fileName, 'CRASH_REPORT_FILE');
+      res.json({ ok: true, data: analysis });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // GET /api/servers/:id/logs/parsed — Líneas parseadas de latest.log
+  // ─────────────────────────────────────────────────────────
+  router.get('/servers/:id/logs/parsed', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const maxLines = req.query.limit ? parseInt(String(req.query.limit), 10) : 1000;
+      const parsed = parseLogFile(server.config.directory, maxLines);
+      res.json({ ok: true, data: parsed });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // GET /api/servers/:id/logs/raw — Descarga directa del archivo latest.log
+  // ─────────────────────────────────────────────────────────
+  router.get('/servers/:id/logs/raw', (req: Request, res: Response) => {
+    try {
+      const server = manager.getServer(req.params.id);
+      if (!server) {
+        res.status(404).json({ ok: false, error: 'Servidor no encontrado.' });
+        return;
+      }
+      const logPath = path.join(server.config.directory, 'logs', 'latest.log');
+      if (!fs.existsSync(logPath)) {
+        res.status(404).json({ ok: false, error: 'No se encontró logs/latest.log' });
+        return;
+      }
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${server.config.name}-latest.log"`);
+      res.sendFile(logPath);
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err.message });
     }

@@ -143,6 +143,15 @@ export function clearPlayersForServer(serverId: string): void {
   serverPlayersFromLogs.delete(serverId);
 }
 
+/**
+ * Obtiene la lista de jugadores conectados actualmente a un servidor.
+ */
+export function getConnectedPlayers(serverId: string): ConnectedPlayer[] {
+  const map = serverPlayersFromLogs.get(serverId);
+  if (!map) return [];
+  return Array.from(map.values());
+}
+
 // ── Cliente nativo de Server List Ping (SLP) ─────────────────
 
 /**

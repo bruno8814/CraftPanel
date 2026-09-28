@@ -9,7 +9,7 @@
 // ============================================================
 
 import { useState, useEffect, useRef } from 'react';
-import { Send, Trash2, ArrowDownToLine } from 'lucide-react';
+import { Send, Trash2, ArrowDownToLine, Stethoscope } from 'lucide-react';
 import { getSocket } from '../api/client';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -17,9 +17,10 @@ import { useAuth } from '../context/AuthContext';
 interface Props {
   serverId: string;
   initialBuffer: string[];
+  onNavigateToLogs?: () => void;
 }
 
-export default function Console({ serverId, initialBuffer }: Props) {
+export default function Console({ serverId, initialBuffer, onNavigateToLogs }: Props) {
   const { hasPermission } = useAuth();
   // Estado: array de líneas de la consola
   const [lines, setLines] = useState<string[]>(initialBuffer);
@@ -135,6 +136,16 @@ export default function Console({ serverId, initialBuffer }: Props) {
           Consola — {lines.length} líneas
         </span>
         <div className="flex items-center gap-2">
+          {onNavigateToLogs && (
+            <button
+              onClick={onNavigateToLogs}
+              className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 border border-amber-500/20 px-2.5 py-1
+                         text-xs font-medium text-amber-300 hover:bg-amber-500/20 transition-colors cursor-pointer"
+              title="Abrir analizador de caídas y visor de logs"
+            >
+              <Stethoscope size={12} /> Diagnóstico
+            </button>
+          )}
           {!autoScroll && (
             <button
               onClick={() => {

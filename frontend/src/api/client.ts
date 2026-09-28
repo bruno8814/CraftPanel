@@ -34,6 +34,9 @@ import {
   AlertsConfig,
   CrashEvent,
   SystemVersionInfo,
+  CrashReportItem,
+  CrashAnalysis,
+  ParsedLogLine,
 } from '../types';
 
 
@@ -563,6 +566,27 @@ export const api = {
   /** Ejecutar actualización en caliente desde GitHub */
   triggerSystemUpdate: () =>
     request<{ message: string }>('/system/update', { method: 'POST' }),
+
+  // ── Opción 6: Analizador de Crashes y Visor de Logs ─────────
+
+  /** Listar todos los reportes de crash guardados */
+  getServerCrashes: (serverId: string) =>
+    request<CrashReportItem[]>(`/servers/${serverId}/crashes`),
+
+  /** Obtener el diagnóstico del último crash o error */
+  getLatestCrashAnalysis: (serverId: string) =>
+    request<CrashAnalysis>(`/servers/${serverId}/crashes/latest`),
+
+  /** Obtener el diagnóstico de un crash específico */
+  getCrashAnalysis: (serverId: string, fileName: string) =>
+    request<CrashAnalysis>(`/servers/${serverId}/crashes/${encodeURIComponent(fileName)}`),
+
+  /** Obtener las líneas parseadas y estructuradas de latest.log */
+  getParsedLogs: (serverId: string, limit: number = 1000) =>
+    request<ParsedLogLine[]>(`/servers/${serverId}/logs/parsed?limit=${limit}`),
+
+  /** Obtener la URL directa de descarga de latest.log */
+  getRawLogUrl: (serverId: string) => `${API_BASE}/servers/${serverId}/logs/raw`,
 };
 
 // ── Cliente WebSocket (Socket.io) ───────────────────────────

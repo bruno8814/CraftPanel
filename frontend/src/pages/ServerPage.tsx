@@ -32,6 +32,7 @@ import {
   Cpu,
   Bell,
   Trash2,
+  Stethoscope,
 } from 'lucide-react';
 import { ServerState, ServerStats } from '../types';
 import { api, getSocket } from '../api/client';
@@ -45,11 +46,12 @@ import Backups from '../components/Backups';
 import Modpacks from '../components/Modpacks';
 import { Schedules } from '../components/Schedules';
 import { AlertsSettings } from '../components/AlertsSettings';
+import CrashAndLogsViewer from '../components/CrashAndLogsViewer';
 import SafeDeleteServerModal from '../components/SafeDeleteServerModal';
 import { useAuth } from '../context/AuthContext';
 
 /** Secciones disponibles en la sidebar */
-type Section = 'console' | 'metrics' | 'mods' | 'plugins' | 'modpacks' | 'files' | 'settings' | 'schedules' | 'backups' | 'alerts';
+type Section = 'console' | 'logs' | 'metrics' | 'mods' | 'plugins' | 'modpacks' | 'files' | 'settings' | 'schedules' | 'backups' | 'alerts';
 
 interface SidebarItem {
   id: Section;
@@ -61,6 +63,7 @@ interface SidebarItem {
 
 const sidebarItems: SidebarItem[] = [
   { id: 'console',   label: 'Consola',          icon: <Terminal size={18} /> },
+  { id: 'logs',      label: 'Logs & Crashes',   icon: <Stethoscope size={18} /> },
   { id: 'metrics',   label: 'Rendimiento',      icon: <Activity size={18} /> },
   { id: 'mods',      label: 'Mods',             icon: <Puzzle size={18} />,  showFor: ['fabric', 'forge', 'mohist', 'neoforge'] },
   { id: 'plugins',   label: 'Plugins',          icon: <Plug size={18} />,    showFor: ['paper', 'mohist'] },
@@ -391,7 +394,15 @@ export default function ServerPage() {
         )}
 
         {section === 'console' && (
-          <Console serverId={config.id} initialBuffer={server.consoleBuffer} />
+          <Console
+            serverId={config.id}
+            initialBuffer={server.consoleBuffer}
+            onNavigateToLogs={() => setSection('logs')}
+          />
+        )}
+
+        {section === 'logs' && (
+          <CrashAndLogsViewer server={server} />
         )}
 
         {section === 'metrics' && (

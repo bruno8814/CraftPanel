@@ -219,4 +219,98 @@ export interface DiscordEmbed {
   timestamp?: string;
 }
 
+// ============================================================
+// Tipos para Analizador de Crashes y Visor de Logs (Opción 6)
+// ============================================================
+
+export type CrashCategory =
+  | 'DEPENDENCY_MISSING'
+  | 'JAVA_VERSION'
+  | 'OUT_OF_MEMORY'
+  | 'PORT_IN_USE'
+  | 'MOD_CONFLICT'
+  | 'CHUNK_CORRUPTION'
+  | 'EULA'
+  | 'PLUGIN_ERROR'
+  | 'MIXIN_ERROR'
+  | 'UNKNOWN';
+
+export interface CrashReportItem {
+  fileName: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export interface CrashAnalysis {
+  hasCrash: boolean;
+  source: 'CRASH_REPORT_FILE' | 'LATEST_LOG' | 'NONE';
+  fileName?: string;
+  timestamp?: string;
+  category: CrashCategory;
+  severity: 'CRITICAL' | 'WARNING';
+  title: string;
+  summary: string;
+  solution: string;
+  culprits: string[];
+  rawReport: string;
+  systemDetails?: Record<string, string>;
+}
+
+export interface ParsedLogLine {
+  id: number;
+  timestamp: string;
+  level: 'INFO' | 'WARN' | 'ERROR' | 'FATAL' | 'DEBUG' | 'UNKNOWN';
+  thread?: string;
+  message: string;
+  raw: string;
+}
+
+// ============================================================
+// Tipos para Gestor Visual de Jugadores (Opción 2)
+// ============================================================
+
+export interface OpPlayer {
+  uuid: string;
+  name: string;
+  level: number;
+  bypassesPlayerLimit?: boolean;
+}
+
+export interface WhitelistPlayer {
+  uuid: string;
+  name: string;
+}
+
+export interface BannedPlayer {
+  uuid: string;
+  name: string;
+  created?: string;
+  source?: string;
+  expires?: string;
+  reason?: string;
+}
+
+export interface BannedIp {
+  ip: string;
+  created?: string;
+  source?: string;
+  expires?: string;
+  reason?: string;
+}
+
+export interface ServerPlayersData {
+  onlinePlayers: {
+    name: string;
+    uuid?: string;
+    avatarUrl: string;
+    joinedAt?: string;
+    pingMs?: number;
+  }[];
+  ops: OpPlayer[];
+  whitelist: WhitelistPlayer[];
+  bannedPlayers: BannedPlayer[];
+  bannedIps: BannedIp[];
+  whitelistEnabled: boolean;
+}
+
 
